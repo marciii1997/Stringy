@@ -67,33 +67,45 @@ impl Canvas {
         let crop_size = (f64::from(gray.width().min(gray.height())) / settings.zoom)
             .round()
             .max(1.0) as u32;
-        let offset = |length: u32, center: f64| {
-            ((f64::from(length) * center / 100.0 - f64::from(crop_size) / 2.0).floor() as u32)
-                .min(length - crop_size)
-        };
-        let crop = image::imageops::crop_imm(
-            &gray,
-            offset(gray.width(), settings.center_x),
-            offset(gray.height(), settings.center_y),
-            crop_size,
-            crop_size,
-        );
-        image::imageops::resize(
-            &*crop,
-            self.size as u32,
-            self.size as u32,
-            image::imageops::FilterType::Lanczos3,
-        )
-        .pixels()
-        .zip(&self.inside)
-        .map(|(p, &inside)| {
-            if inside {
-                1.0 - (f32::from(p[0]) / 255.0).powf(settings.gamma)
+        let size = self.size as u32;
+        let axis = |length: u32, center: f64| {
+            let wanted =
+                (f64::from(length) * center / 100.0 - f64::from(crop_size) / 2.0).floor() as i64;
+            let offset = if settings.pad_crop || settings.zoom < 1.0 {
+                wanted
             } else {
-                0.0
-            }
-        })
-        .collect()
+                wanted.clamp(0, i64::from(length - crop_size))
+            };
+            let start = offset.max(0);
+            let end = (offset + i64::from(crop_size)).min(i64::from(length));
+            let pixel =
+                |p| ((p - offset) as f64 * f64::from(size) / f64::from(crop_size)).round() as u32;
+            (start as u32, (end - start) as u32, pixel(start), pixel(end))
+        };
+        let (x, w, left, right) = axis(gray.width(), settings.center_x);
+        let (y, h, top, bottom) = axis(gray.height(), settings.center_y);
+        let mut raster = GrayImage::from_pixel(size, size, Luma([255]));
+        if right > left && bottom > top && w > 0 && h > 0 {
+            let crop = image::imageops::crop_imm(&gray, x, y, w, h);
+            let patch = image::imageops::resize(
+                &*crop,
+                right - left,
+                bottom - top,
+                image::imageops::FilterType::Lanczos3,
+            );
+            image::imageops::replace(&mut raster, &patch, left.into(), top.into());
+        }
+        raster
+            .pixels()
+            .zip(&self.inside)
+            .map(|(p, &inside)| {
+                if inside {
+                    1.0 - (f32::from(p[0]) / 255.0).powf(settings.gamma)
+                } else {
+                    0.0
+                }
+            })
+            .collect()
     }
 
     pub fn render(&self, darkness: &[f32]) -> GrayImage {

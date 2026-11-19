@@ -7,6 +7,8 @@
 {% block content %}
   <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
+  {% if perms.studio.add_artwork %}<p><a href="{% url 'motif' art.pk %}">Motiv bearbeiten und Varianten vergleichen</a></p>{% endif %}
+  {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}
   <h2>{{ art.get_state_display }}</h2>
   {% if art.state == "failed" %}
     {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}

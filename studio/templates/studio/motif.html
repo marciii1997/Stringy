@@ -1,0 +1,39 @@
+{% extends "studio/base.html" %}
+{% load static %}
+{% block content %}
+<a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
+<h1>Motiv bearbeiten</h1>
+<form method="post" id="motif-form">
+{% csrf_token %}
+{{ calc.errors }}{{ mix.errors }}{{ mix.strokes }}
+<div class="spread motif-work">
+<section>
+<h2>Ausschnitt und Masken</h2>
+<canvas id="brush" aria-label="Bild mit editierbaren Masken und Ankerkreis"></canvas>
+<label>Werkzeug <select id="tool">
+<option value="center">Kreismitte setzen</option><option value="subject">Motiv erhalten</option>
+<option value="background">Als Hintergrund markieren</option><option value="focus">Fokus hinzufügen</option>
+<option value="unfocus">Fokus entfernen</option><option value="clothing">Kleidung markieren</option>
+<option value="unclothe">Kleidung entfernen</option></select></label>
+<label>Pinselradius <input type="range" id="radius" min="1" max="16" value="4"> </label>
+<div class="actions"><button type="button" id="undo">Strich zurück</button>
+<button type="button" id="frame">Automatischer Ausschnitt</button></div>
+<p id="detection"></p><p role="status" id="brush-status"></p>
+{{ mix.pad.as_field_group }} {{ calc.zoom.as_field_group }} {{ calc.center_x.as_field_group }} {{ calc.center_y.as_field_group }}
+</section>
+<section>
+<h2>Graustufenvorlage</h2>
+<canvas id="tone" width="256" height="256" aria-label="Kreisförmige Vorschau der Tonwerte"></canvas>
+{% for field in sliders %}<label class="slider">{{ field.label }} {{ field }} <output for="{{ field.id_for_label }}"></output></label>{% endfor %}
+<p>Der Fokus erhöht das Gewicht markierter Details im Fadenpfad. Die berechnete Simulation zeigt, welche Konturen der Faden tatsächlich trifft.</p>
+</section>
+</div>
+<details><summary>Faden, Anker und Rechenparameter</summary>
+{% for field in calc %}{% if field.name != "zoom" and field.name != "center_x" and field.name != "center_y" %}<p>{{ field.as_field_group }}</p>{% endif %}{% endfor %}
+</details>
+<div class="actions"><button name="action" value="single">Eigene Variante berechnen</button>
+<button name="action" value="compare">Sechs Varianten vergleichen</button></div>
+</form>
+{{ config|json_script:"motif-config" }}
+<script src="{% static 'studio/motif.js' %}" defer></script>
+{% endblock %}

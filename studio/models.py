@@ -6,6 +6,14 @@ from django.db import models
 from django.utils import timezone
 
 
+class MotifAnalysis(models.Model):
+    original = models.OneToOneField("Artwork", on_delete=models.CASCADE)
+    photo = models.BinaryField()
+    masks = models.BinaryField()
+    faces = models.JSONField(default=list)
+    dimensions = models.JSONField()
+
+
 class Artwork(models.Model):
     class State(models.TextChoices):
         QUEUED = "queued", "In Warteschlange"
@@ -28,7 +36,7 @@ class Artwork(models.Model):
         "Detailgewicht", default=1, validators=[MinValueValidator(0), MaxValueValidator(20)]
     )
     zoom = models.FloatField(
-        "Vergrößerung", default=1, validators=[MinValueValidator(1), MaxValueValidator(5)]
+        "Vergrößerung", default=1, validators=[MinValueValidator(0.01), MaxValueValidator(5)]
     )
     center_x = models.FloatField(
         "Bildmitte horizontal (%)", default=50, validators=[MinValueValidator(0), MaxValueValidator(100)]
@@ -45,6 +53,8 @@ class Artwork(models.Model):
     opacity = models.FloatField(
         "Fadendeckkraft", default=1, validators=[MinValueValidator(0.05), MaxValueValidator(1)]
     )
+    preparation = models.JSONField(default=dict, editable=False)
+    comparison = models.UUIDField(null=True, db_index=True, editable=False)
     previous = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, editable=False)
     budget = models.PositiveIntegerField(
         "Maximale Verbindungen",

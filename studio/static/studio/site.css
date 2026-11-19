@@ -300,3 +300,20 @@ summary {
   gap: .7rem;
   flex-wrap: wrap;
 }
+
+.motif-work { align-items: start; }
+.motif-work canvas { display:block; max-width:100%; margin:1rem 0; }
+#brush { width:100%; height:auto; touch-action:none; cursor:crosshair; }
+#tone { width:min(100%,256px); height:auto; }
+.motif-work label { display:block; margin-top:.75rem; }
+.motif-work .actions { margin:1rem 0; gap:.6rem; }
+.slider input { display:block; width:min(100%,24rem); accent-color:var(--ink); }
+.slider output { font-variant-numeric:tabular-nums; }
+.motif-results { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr)); gap:1.4rem; }
+.motif-results section { padding:1rem 0; border-top:1px solid var(--line); }
+.motif-result { width:160px; max-width:100%; height:auto; }
+.spread > div { min-width:0; }
+.motif-distances { display:flex; flex-wrap:wrap; align-items:start; gap:1rem; }
+.motif-distances figure { margin:.6rem 0; }
+.motif-distances details { max-width:100%; }
+.motif-zoom { overflow:auto; max-height:380px; }

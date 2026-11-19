@@ -175,3 +175,35 @@ laufen. Compose verwendet im gleichen Projekt das vorhandene Datenvolume.
 Öffne `http://localhost:8000` und melde dich mit deinem bisherigen Admin-Konto an.
 Neue Ergebnisse zeigen **Optimierer 2**. Bei Problemen zeigt
 `docker compose logs --tail=80 migrate web worker` die Startmeldungen.
+
+## Motive vorbereiten und Fadenpfade vergleichen
+
+Öffne als Atelier-Administrator ein Motiv und wähle **Motiv bearbeiten und Varianten vergleichen**.
+Der Server analysiert das gespeicherte Foto lokal mit OpenCV. Er sucht menschliche Gesichter und
+Katzenköpfe, gewichtet erkannte Augen und lächelnde Mundpartien, schätzt den Vordergrund mit GrabCut und markiert bei Personen einen möglichen
+Kleidungsbereich. Unter **Automatischer Ausschnitt** wird der Kreis um alle erkannten Gesichter
+gelegt. Bei Motiven ohne erkanntes Gesicht dient die Vordergrundmaske als Vorschlag. Bei weit auseinanderliegenden Gesichtern kann ein weißer Rand entstehen.
+
+Prüfe die Masken im jeweiligen Pinselwerkzeug. Ergänze fehlende Motivteile, markiere wichtige
+Details oder nimm Flächen wieder aus der Auswahl. Die Regler steuern Hintergrund, Kleidung,
+Fokus, helle Stellen im Fokus und Konturen. Die Graustufenvorschau zeigt den Zuschnitt und die
+Aufhellung. Fokus und Konturen wirken bei der Wahl der tatsächlichen Fäden. Optimierer 3 bewertet
+dafür mit feinem und grobem Sobel-Filter erkannte Konturen und gerichtete Helligkeitsunterschiede über einen und vier Rasterpixel.
+
+**Eigene Variante berechnen** erzeugt einen neuen Fadenpfad. **Sechs Varianten vergleichen**
+stellt Original, Fokus mit Lichterschutz, Hintergrund, Konturen, Hintergrund mit Konturen und
+die eigene Mischung als separate Worker-Aufträge gegenüber. Ausschnitt und physische Parameter
+sind in allen sechs Aufträgen gleich. Öffne ein Ergebnis für die Detailansicht, den Fadenverlauf
+oder die Kalenderzuordnung. Bereits zugewiesene Kalender behalten ihren bisherigen Pfad.
+
+Beim Aktualisieren der Docker-Installation im bestehenden Projektordner:
+
+```bash
+git switch main
+git pull --ff-only origin main
+docker compose build web
+docker compose up -d --no-build --force-recreate
+```
+
+Compose führt die Datenbankmigration automatisch aus. Das benannte Datenvolume enthält die Motive
+und Kalender. Die lokale Oberfläche ist unter http://localhost:8000 erreichbar.

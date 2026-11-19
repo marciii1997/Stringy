@@ -147,6 +147,7 @@ def recalculate(request, pk):
     if form.is_valid():
         variant = form.save(commit=False)
         variant.source = art.source
+        variant.preparation = art.preparation
         variant.previous = art
         variant.save()
         return redirect("simulation", pk=variant.pk)

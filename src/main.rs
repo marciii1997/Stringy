@@ -9,7 +9,7 @@ use std::{
 
 use clap::Parser;
 use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
-use stringy::{Settings, generate};
+use stringy::{Settings, generate_guided};
 
 #[derive(Parser)]
 #[command(
@@ -19,6 +19,9 @@ use stringy::{Settings, generate};
 struct Args {
     /// JPEG, PNG, or WebP photo.
     input: PathBuf,
+    /// Optional RGB guidance PNG aligned with the final square raster.
+    #[arg(long)]
+    guide: Option<PathBuf>,
     /// Directory for the two PNG previews, path.json, and segments.csv.
     #[arg(short, long, default_value = "output")]
     output: PathBuf,
@@ -32,6 +35,9 @@ struct Args {
     /// Magnification of the square crop.
     #[arg(long, default_value_t = Settings::default().zoom)]
     zoom: f64,
+    /// Allow the selected circle to extend onto white outside the image.
+    #[arg(long)]
+    pad_crop: bool,
     /// Crop center as a percentage of the oriented image width.
     #[arg(long, default_value_t = Settings::default().center_x)]
     center_x: f64,
@@ -79,6 +85,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         detail: args.detail,
         passes: args.passes,
         zoom: args.zoom,
+        pad_crop: args.pad_crop,
         center_x: args.center_x,
         center_y: args.center_y,
         gamma: args.gamma,
@@ -108,7 +115,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         "Preparing the {} × {} canvas and line cache",
         settings.raster_size, settings.raster_size
     );
-    let art = generate(&source, &settings, |progress| {
+    let guide = args
+        .guide
+        .map(image::open)
+        .transpose()?
+        .map(|im| im.to_rgb8());
+    let art = generate_guided(&source, &settings, guide.as_ref(), |progress| {
         if progress.segments > 0 && progress.segments % 1000 == 0 {
             eprintln!("{} segments", progress.segments);
         }

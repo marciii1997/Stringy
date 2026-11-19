@@ -10,6 +10,7 @@ pub(super) struct Objective {
     depth: Vec<f64>,
     opaque: Vec<u32>,
     weights: Vec<f32>,
+    neighbors: Vec<Vec<(usize, f32)>>,
     cell_weights: Vec<f64>,
     inverse_counts: Vec<f64>,
     // Sum of target minus render within each cell, excluding the circular border.
@@ -19,10 +20,22 @@ pub(super) struct Objective {
 pub(super) struct Scratch {
     delta: Vec<f64>,
     touched: Vec<usize>,
+    pixel_delta: Vec<f32>,
+    edge_pixels: Vec<usize>,
 }
 
 impl Objective {
+    #[cfg(test)]
     pub fn new(canvas: &Canvas, target: &[f32], emphasis: f32) -> Self {
+        Self::guided(canvas, target, emphasis, None)
+    }
+
+    pub fn guided(
+        canvas: &Canvas,
+        target: &[f32],
+        emphasis: f32,
+        guide: Option<&image::RgbImage>,
+    ) -> Self {
         // Normalize the local mean by the circle mask so the rim is not a false edge.
         let image = canvas.render(target);
         let mask = image::GrayImage::from_fn(canvas.size as u32, canvas.size as u32, |x, y| {
@@ -35,7 +48,7 @@ impl Objective {
         let radius = canvas.size as f32 / 48.0;
         let blurred = image::imageops::blur(&image, radius);
         let coverage = image::imageops::blur(&mask, radius);
-        let weights: Vec<_> = target
+        let mut weights: Vec<_> = target
             .iter()
             .zip(blurred.as_raw())
             .zip(coverage.as_raw())
@@ -44,6 +57,43 @@ impl Objective {
                 1.0 + emphasis * ((tone - mean).abs() * 5.0).min(2.0).powi(2)
             })
             .collect();
+        let mut neighbors = Vec::new();
+        if let Some(map) = guide {
+            for (weight, p) in weights.iter_mut().zip(map.pixels()) {
+                *weight *= 1.0 + 5.0 * f32::from(p[1]) / 255.0;
+            }
+            if map.pixels().any(|p| p[2] != 0) {
+                neighbors = vec![Vec::new(); target.len()];
+                // Central differences across fine and broad transitions. Each pair is
+                // stored in both directions so candidate gains include both endpoints.
+                for y in 0..canvas.size {
+                    for x in 0..canvas.size {
+                        let i = y * canvas.size + x;
+                        if !canvas.inside[i] {
+                            continue;
+                        }
+                        for step in [1, 4] {
+                            for (nx, ny) in [(x + step, y), (x, y + step)] {
+                                if nx >= canvas.size || ny >= canvas.size {
+                                    continue;
+                                }
+                                let j = ny * canvas.size + nx;
+                                let contrast = (target[i] - target[j]).abs();
+                                if !canvas.inside[j] || contrast <= 0.06 {
+                                    continue;
+                                }
+                                let strength = map.as_raw()[3 * i + 2].min(map.as_raw()[3 * j + 2]);
+                                let w = (contrast - 0.06).min(0.45) * f32::from(strength) / 255.0;
+                                if w > 0.0 {
+                                    neighbors[i].push((j, w));
+                                    neighbors[j].push((i, w));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         let cols = canvas.size.div_ceil(CELL_SIDE);
         let mut cell_weights = vec![0.0; cols * cols];
         let mut counts = vec![0usize; cols * cols];
@@ -65,6 +115,7 @@ impl Objective {
             depth: vec![0.0; target.len()],
             opaque: vec![0; target.len()],
             weights,
+            neighbors,
             cell_weights,
             current: vec![0.0; target.len()],
             cells,
@@ -77,6 +128,8 @@ impl Objective {
         Scratch {
             delta: vec![0.0; self.residual.len()],
             touched: Vec::new(),
+            pixel_delta: vec![0.0; self.neighbors.len()],
+            edge_pixels: Vec::new(),
         }
     }
 
@@ -97,6 +150,10 @@ impl Objective {
                 fine += f64::from(
                     self.weights[i] * delta * (2.0 * (target[i] - self.current[i]) - delta),
                 );
+                if !self.neighbors.is_empty() && !self.neighbors[i].is_empty() {
+                    scratch.pixel_delta[i] = delta;
+                    scratch.edge_pixels.push(i);
+                }
                 let cell = self.cells[i];
                 if scratch.delta[cell] == 0.0 {
                     scratch.touched.push(cell);
@@ -112,7 +169,22 @@ impl Objective {
                 * delta
                 * (2.0 * self.residual[cell] - delta);
         }
-        fine * (1.0 - TONE_WEIGHT) + tone * TONE_WEIGHT
+        let mut contour = 0.0;
+        for &i in &scratch.edge_pixels {
+            let d = scratch.pixel_delta[i];
+            let residual = target[i] - self.current[i];
+            for &(j, w) in &self.neighbors[i] {
+                contour += f64::from(
+                    w * d
+                        * (2.0 * (residual - (target[j] - self.current[j])) - d
+                            + scratch.pixel_delta[j]),
+                );
+            }
+        }
+        for i in scratch.edge_pixels.drain(..) {
+            scratch.pixel_delta[i] = 0.0;
+        }
+        fine * (1.0 - TONE_WEIGHT) + tone * TONE_WEIGHT + contour
     }
 
     // Optical depths add. Keep fully opaque hits separately so removing one

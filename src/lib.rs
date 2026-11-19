@@ -27,6 +27,7 @@ pub struct Settings {
     pub detail: f32,
     pub passes: usize,
     pub zoom: f64,
+    pub pad_crop: bool,
     pub center_x: f64,
     pub center_y: f64,
     pub gamma: f32,
@@ -48,6 +49,7 @@ impl Default for Settings {
             detail: 1.0,
             passes: 3,
             zoom: 1.0,
+            pad_crop: false,
             center_x: 50.0,
             center_y: 50.0,
             gamma: 1.0,
@@ -97,12 +99,12 @@ impl Settings {
                 "thread diameter must be between 0.001 mm and one tenth of the canvas diameter",
             ));
         }
-        if !(1.0..=5.0).contains(&self.zoom)
+        if !(0.01..=5.0).contains(&self.zoom)
             || !(0.0..=100.0).contains(&self.center_x)
             || !(0.0..=100.0).contains(&self.center_y)
         {
             return Err(InvalidInput(
-                "zoom must be 1–5 and crop center must be 0–100 percent",
+                "zoom must be 0.01–5 and crop center must be 0–100 percent",
             ));
         }
         if !(0.3..=3.0).contains(&self.gamma) {
@@ -422,12 +424,34 @@ impl Search<'_> {
 pub fn generate(
     source: &DynamicImage,
     settings: &Settings,
+    progress: impl FnMut(Progress) -> ControlFlow<()>,
+) -> Result<Artwork, InvalidInput> {
+    generate_guided(source, settings, None, progress)
+}
+
+/// Raster-aligned guide. Red fades target darkness, green adds importance,
+/// and blue weights differences across contours at two spatial scales.
+pub fn generate_guided(
+    source: &DynamicImage,
+    settings: &Settings,
+    guide: Option<&image::RgbImage>,
     mut progress: impl FnMut(Progress) -> ControlFlow<()>,
 ) -> Result<Artwork, InvalidInput> {
     settings.validate(source)?;
     let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
-    let target = canvas.target(source, settings);
-    let image = Objective::new(&canvas, &target, settings.detail);
+    let mut target = canvas.target(source, settings);
+    if let Some(map) = guide {
+        let size = canvas.size as u32;
+        if map.dimensions() != (size, size) {
+            return Err(InvalidInput(
+                "guide must match optimization raster dimensions",
+            ));
+        }
+        for (tone, p) in target.iter_mut().zip(map.pixels()) {
+            *tone *= 1.0 - f32::from(p[0]) / 255.0;
+        }
+    }
+    let image = Objective::guided(&canvas, &target, settings.detail, guide);
     let initial_rmse = rmse(&canvas, &target, &image.current);
     let lines = Lines::new(&canvas, settings);
     let scratch = (0..settings.anchors.div_ceil(32))
@@ -492,7 +516,7 @@ pub fn generate(
         cache_bytes_used: lines.cache.len() * size_of::<Sample>(),
         route: Route {
             format_version: 1,
-            optimizer_version: 2,
+            optimizer_version: if guide.is_some() { 3 } else { 2 },
             final_rmse: rmse(&canvas, &target, &current),
             initial_rmse,
             settings: settings.clone(),
@@ -549,6 +573,63 @@ mod tests {
         let before = loss(&state);
         state.change(&canvas, &lines, 0, 0.8, true);
         assert!((before - loss(&state) - gain).abs() < 1e-5);
+    }
+
+    #[test]
+    fn contour_gain_matches_change_in_directional_error() {
+        let n = 65;
+        let canvas = Canvas::new(n, 600.0, 32);
+        let settings = Settings {
+            raster_size: n,
+            anchors: 32,
+            ..Settings::default()
+        };
+        let target: Vec<f32> = (0..n * n)
+            .map(|i| if (i % n) / 4 % 2 == 0 { 0.8 } else { 0.2 })
+            .collect();
+        let guide = image::RgbImage::from_pixel(n as u32, n as u32, image::Rgb([0, 0, 255]));
+        let lines = Lines::new(&canvas, &settings);
+        let mut baseline = Objective::new(&canvas, &target, 0.0);
+        let mut guided = Objective::guided(&canvas, &target, 0.0, Some(&guide));
+        let loss = |current: &[f32]| {
+            let mut loss = 0.0;
+            for i in 0..target.len() {
+                for step in [1, 4] {
+                    let j = i + step;
+                    if i % n + step >= n || !canvas.inside[i] || !canvas.inside[j] {
+                        continue;
+                    }
+                    let gradient = target[i] - target[j];
+                    let w = (gradient.abs() - 0.06).clamp(0.0, 0.45);
+                    loss += f64::from(w) * f64::from(gradient - (current[i] - current[j])).powi(2);
+                }
+            }
+            loss
+        };
+        let mut scratch = guided.scratch();
+        for line in [12, 14, 16] {
+            let extra = guided.gain(&canvas, &lines, line, &target, 0.9, &mut scratch)
+                - baseline.gain(&canvas, &lines, line, &target, 0.9, &mut baseline.scratch());
+            let before = loss(&guided.current);
+            guided.change(&canvas, &lines, line, 0.9, true);
+            baseline.change(&canvas, &lines, line, 0.9, true);
+            assert!((before - loss(&guided.current) - extra).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn padded_crop_keeps_white_space_above_the_photo() {
+        let settings = Settings {
+            zoom: 0.5,
+            center_y: 0.0,
+            pad_crop: true,
+            ..Settings::default()
+        };
+        let source = DynamicImage::ImageLuma8(GrayImage::new(100, 50));
+        let canvas = Canvas::new(100, 600.0, 32);
+        let target = canvas.target(&source, &settings);
+        assert_eq!(target[25 * 100 + 50], 0.0);
+        assert_eq!(target[60 * 100 + 50], 1.0);
     }
 
     #[test]

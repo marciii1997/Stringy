@@ -2,6 +2,8 @@
 {% block content %}
   <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
+  {% if perms.studio.add_artwork %}<p><a href="{% url 'motif' art.pk %}">Motiv bearbeiten und Varianten vergleichen</a></p>{% endif %}
+  {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}
   <p>Berechnung #{{ art.pk }} · Optimierer {{ art.route.optimizer_version|default:"1" }}</p>
   <p>{{ art.count }} Verbindungen · {{ art.anchors }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden</p>
   <p>{% if art.route.stop_reason == "segment_limit" %}Das Verbindungslimit ist erreicht.{% elif art.route.stop_reason == "no_improving_move" %}Die Suche hat keinen weiteren vorteilhaften Fadenzug gefunden.{% endif %}</p>
@@ -17,6 +19,13 @@
       <img class="art"
            src="{% url 'asset' art.pk 'preview' %}"
            alt="Vollständige Fadensimulation">
+      <div class="motif-distances">
+        <figure><img width="112" height="112" src="{% url 'asset' art.pk 'preview' %}" alt="Fadenbild im Kleinformat">
+          <figcaption>Aus der Ferne</figcaption></figure>
+        <details><summary>Detailansicht (2×)</summary><div class="motif-zoom" tabindex="0" aria-label="Detailbild zum Scrollen">
+          <img width="1024" height="1024" src="{% url 'asset' art.pk 'preview' %}" alt="Vergrößerte Fadenstruktur">
+        </div></details>
+      </div>
       <details>
         <summary>Graustufenvorlage ansehen</summary>
         <img class="art"

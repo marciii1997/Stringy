@@ -1,0 +1,17 @@
+{% extends "studio/base.html" %}
+{% block head %}{% if pending %}<meta http-equiv="refresh" content="12">{% endif %}{% endblock %}
+{% block content %}
+{% if first.previous_id %}<a href="{% url 'simulation' first.previous_id %}">← {{ first.title }}</a>{% endif %}
+<h1>Variantenvergleich</h1>
+<p>Alle sechs Fadenpfade verwenden denselben Ausschnitt, Faden und Ankerkreis. Öffne eine Simulation für die Detailansicht.</p>
+<div class="motif-results">
+{% for art in variants %}
+<section><h2>{{ art.label }}</h2>
+{% if art.state == "ready" %}
+<a href="{% url 'simulation' art.pk %}"><img class="motif-result" src="{% url 'asset' art.pk 'preview' %}" alt="{{ art.label }} in Betrachtungsgröße"></a>
+<p>{{ art.count }} Verbindungen · <a href="{% url 'simulation' art.pk %}">Simulation öffnen</a></p>
+{% else %}<p><a href="{% url 'simulation' art.pk %}">{{ art.get_state_display }}</a></p>{% endif %}
+</section>
+{% endfor %}
+</div>
+{% endblock %}

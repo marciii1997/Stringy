@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from studio.models import Artwork
+from studio.motif import DEFAULTS, analysis_for, guide_for
 
 
 def process_one():
@@ -58,6 +59,12 @@ def process_one():
                 "--max-segments",
                 str(art.budget),
             ]
+            if art.preparation.get("pad"):
+                command.append("--pad-crop")
+            if any(art.preparation.get(key) for key in DEFAULTS):
+                guide = folder / "guide.png"
+                guide_for(art, analysis_for(art)).save(guide)
+                command.extend(["--guide", str(guide)])
             process = subprocess.Popen(command)
             try:
                 for _ in range(30):
@@ -79,6 +86,8 @@ def process_one():
                     process.kill()
                 process.wait()
             route = json.loads((folder / "path.json").read_bytes())
+            if art.preparation:
+                route["preparation"] = art.preparation
             claim.update(
                 state=Artwork.State.READY,
                 preview=(folder / "preview.png").read_bytes(),
