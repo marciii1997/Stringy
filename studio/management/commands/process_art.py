@@ -63,7 +63,12 @@ def process_one():
                 command.append("--pad-crop")
             if any(art.preparation.get(key) for key in DEFAULTS):
                 guide = folder / "guide.png"
-                guide_for(art, analysis_for(art)).save(guide)
+                weights, ink = guide_for(art, analysis_for(art))
+                weights.save(guide)
+                if ink is not None:
+                    ink_path = folder / "background-ink.png"
+                    ink.save(ink_path)
+                    command.extend(["--background-ink", str(ink_path)])
                 command.extend(["--guide", str(guide)])
             process = subprocess.Popen(command)
             try:

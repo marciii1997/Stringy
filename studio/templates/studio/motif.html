@@ -24,6 +24,7 @@
 <section>
 <h2>Graustufenvorlage</h2>
 <canvas id="tone" width="256" height="256" aria-label="Kreisförmige Vorschau der Tonwerte"></canvas>
+{{ mix.background_color.as_field_group }}
 {% for field in sliders %}<label class="slider">{{ field.label }} {{ field }} <output for="{{ field.id_for_label }}"></output></label>{% endfor %}
 <p>Der Fokus erhöht das Gewicht markierter Details im Fadenpfad. Die berechnete Simulation zeigt, welche Konturen der Faden tatsächlich trifft.</p>
 </section>

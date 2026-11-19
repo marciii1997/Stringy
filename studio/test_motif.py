@@ -56,6 +56,43 @@ class MotifTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 302)
         self.assertEqual(self.client.get(response.url).status_code, 302)
 
+    def test_black_background_is_saved_and_only_used_in_background_profiles(self):
+        self.client.force_login(self.admin)
+        data = {**self.data(), "background_color": "black", "background": 100}
+        self.client.post(reverse("motif", args=[self.art.pk]), data)
+        variants = Artwork.objects.filter(previous=self.art)
+        self.assertEqual(variants.filter(preparation__background_color="black").count(), 3)
+        for variant in variants:
+            self.assertEqual(
+                variant.preparation["background"] == 100,
+                variant.preparation.get("background_color") == "black",
+            )
+        custom = variants.get(preparation__profile="custom")
+        self.assertEqual(
+            self.client.get(reverse("motif", args=[custom.pk]))
+            .context["mix"]["background_color"]
+            .value(),
+            "black",
+        )
+
+    def test_black_background_respects_strength_subject_and_padding(self):
+        self.art.zoom = 0.5
+        self.art.preparation = {
+            **DEFAULTS,
+            "background_color": "black",
+            "pad": True,
+            "strokes": [{"layer": "subject", "radius": 0.2, "points": [[0.5, 0.5]]}],
+        }
+        for strength, expected in [(100, 255), (50, 128), (0, None)]:
+            self.art.preparation["background"] = strength
+            _, ink = guide_for(self.art, self.analysis, 100)
+            if expected is None:
+                self.assertIsNone(ink)
+            else:
+                self.assertEqual(ink.getpixel((50, 50)), 0)
+                self.assertEqual(ink.getpixel((30, 50)), expected)
+                self.assertEqual(ink.getpixel((50, 5)), expected)
+
     def test_bad_strokes_do_not_queue_jobs(self):
         self.client.force_login(self.admin)
         data = self.data()
@@ -77,7 +114,8 @@ class MotifTests(TestCase):
                 for k in ("subject", "focus", "clothing")
             ],
         )
-        guide = guide_for(self.art, self.analysis, 100)
+        guide, ink = guide_for(self.art, self.analysis, 100)
+        self.assertIsNone(ink)
         red, green, blue = guide.getpixel((50, 50))
         self.assertAlmostEqual(red, 255 * DEFAULTS["clothing"] / 100, delta=2)
         self.assertGreater(green, 100)

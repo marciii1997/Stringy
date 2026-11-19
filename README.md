@@ -182,12 +182,15 @@ Neue Ergebnisse zeigen **Optimierer 2**. Bei Problemen zeigt
 Der Server analysiert das gespeicherte Foto lokal mit OpenCV. Er sucht menschliche Gesichter und
 Katzenköpfe, gewichtet erkannte Augen und lächelnde Mundpartien, schätzt den Vordergrund mit GrabCut und markiert bei Personen einen möglichen
 Kleidungsbereich. Unter **Automatischer Ausschnitt** wird der Kreis um alle erkannten Gesichter
-gelegt. Bei Motiven ohne erkanntes Gesicht dient die Vordergrundmaske als Vorschlag. Bei weit auseinanderliegenden Gesichtern kann ein weißer Rand entstehen.
+gelegt. Bei Motiven ohne erkanntes Gesicht dient die Vordergrundmaske als Vorschlag. Bei weit auseinanderliegenden Gesichtern kann der Kreis über den Bildrand hinausreichen.
 
 Prüfe die Masken im jeweiligen Pinselwerkzeug. Ergänze fehlende Motivteile, markiere wichtige
 Details oder nimm Flächen wieder aus der Auswahl. Die Regler steuern Hintergrund, Kleidung,
-Fokus, helle Stellen im Fokus und Konturen. Die Graustufenvorschau zeigt den Zuschnitt und die
-Aufhellung. Fokus und Konturen wirken bei der Wahl der tatsächlichen Fäden. Optimierer 3 bewertet
+Fokus, helle Stellen im Fokus und Konturen. Unter **Hintergrundfarbe** wählst du Weiß oder Schwarz. Die **Hintergrundstärke**
+blendet den erkannten Hintergrund und den ergänzten Bildrand stufenlos in die gewählte Farbe.
+Bei 0 % bleiben die ursprünglichen Tonwerte erhalten, bei 100 % erhält der vollständig als
+Hintergrund markierte Bereich die gewählte Farbe. Mit **Motiv erhalten** kannst du beispielsweise
+helle Schnurrhaare aussparen. Die Graustufenvorschau zeigt den Zuschnitt und die Tonwerte. Fokus und Konturen wirken bei der Wahl der tatsächlichen Fäden. Optimierer 3 bewertet
 dafür mit feinem und grobem Sobel-Filter erkannte Konturen und gerichtete Helligkeitsunterschiede über einen und vier Rasterpixel.
 
 **Eigene Variante berechnen** erzeugt einen neuen Fadenpfad. **Sechs Varianten vergleichen**

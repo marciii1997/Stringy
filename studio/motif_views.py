@@ -20,12 +20,18 @@ def slider(label):
 
 
 class MixForm(forms.Form):
-    background = slider("Hintergrund aufhellen")
+    background_color = forms.ChoiceField(
+        label="Hintergrundfarbe",
+        choices=[("white", "Weiß"), ("black", "Schwarz")],
+        initial="white",
+        required=False,
+    )
+    background = slider("Hintergrundstärke")
     clothing = slider("Kleidung aufhellen")
     focus = slider("Fokus gewichten")
     highlights = slider("Helle Details im Fokus schützen")
     edges = slider("Konturen gewichten")
-    pad = forms.BooleanField(label="Bildrand mit Weiß ergänzen", required=False)
+    pad = forms.BooleanField(label="Ausschnitt über den Bildrand hinaus erlauben", required=False)
     strokes = forms.JSONField(widget=forms.HiddenInput, required=False)
     action = forms.ChoiceField(choices=[("single", "Variante"), ("compare", "Vergleich")])
 
@@ -76,6 +82,8 @@ def editor(request, pk):
             for name in PROFILES if compare else ("custom",):
                 _, active = PROFILES[name]
                 prep = {k: values[k] if k in active else 0 for k in DEFAULTS}
+                if "background" in active:
+                    prep["background_color"] = values["background_color"] or "white"
                 prep.update(profile=name, strokes=values["strokes"], pad=values["pad"])
                 variant = Artwork.objects.create(
                     **calc.cleaned_data, previous=art, source=source, preparation=prep, comparison=group

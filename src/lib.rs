@@ -435,6 +435,17 @@ pub fn generate_guided(
     source: &DynamicImage,
     settings: &Settings,
     guide: Option<&image::RgbImage>,
+    progress: impl FnMut(Progress) -> ControlFlow<()>,
+) -> Result<Artwork, InvalidInput> {
+    generate_with_ink(source, settings, guide, None, progress)
+}
+
+/// Apply the optional raster-aligned darkness contribution after the RGB guide's fade.
+pub fn generate_with_ink(
+    source: &DynamicImage,
+    settings: &Settings,
+    guide: Option<&image::RgbImage>,
+    background_ink: Option<&GrayImage>,
     mut progress: impl FnMut(Progress) -> ControlFlow<()>,
 ) -> Result<Artwork, InvalidInput> {
     settings.validate(source)?;
@@ -449,6 +460,18 @@ pub fn generate_guided(
         }
         for (tone, p) in target.iter_mut().zip(map.pixels()) {
             *tone *= 1.0 - f32::from(p[0]) / 255.0;
+        }
+    }
+    if let Some(ink) = background_ink {
+        if ink.dimensions() != (canvas.size as u32, canvas.size as u32) {
+            return Err(InvalidInput(
+                "background ink must match optimization raster dimensions",
+            ));
+        }
+        for ((tone, p), &inside) in target.iter_mut().zip(ink.pixels()).zip(&canvas.inside) {
+            if inside {
+                *tone = (*tone + f32::from(p[0]) / 255.0).min(1.0);
+            }
         }
     }
     let image = Objective::guided(&canvas, &target, settings.detail, guide);
@@ -516,7 +539,13 @@ pub fn generate_guided(
         cache_bytes_used: lines.cache.len() * size_of::<Sample>(),
         route: Route {
             format_version: 1,
-            optimizer_version: if guide.is_some() { 3 } else { 2 },
+            optimizer_version: if background_ink.is_some() {
+                4
+            } else if guide.is_some() {
+                3
+            } else {
+                2
+            },
             final_rmse: rmse(&canvas, &target, &current),
             initial_rmse,
             settings: settings.clone(),
@@ -615,6 +644,34 @@ mod tests {
             baseline.change(&canvas, &lines, line, 0.9, true);
             assert!((before - loss(&guided.current) - extra).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn black_background_changes_the_path_and_leaves_the_subject_and_corners_white() {
+        let settings = Settings {
+            raster_size: 64,
+            anchors: 32,
+            max_segments: 24,
+            passes: 0,
+            ..Settings::default()
+        };
+        let source = DynamicImage::ImageLuma8(GrayImage::from_pixel(64, 64, Luma([255])));
+        let mask = GrayImage::from_fn(64, 64, |x, _| Luma([if x < 32 { 255 } else { 0 }]));
+        let guide =
+            image::RgbImage::from_fn(64, 64, |x, y| image::Rgb([mask.get_pixel(x, y)[0], 0, 0]));
+        let plain = generate_guided(&source, &settings, Some(&guide), |_| {
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+        let black = generate_with_ink(&source, &settings, Some(&guide), Some(&mask), |_| {
+            ControlFlow::Continue(())
+        })
+        .unwrap();
+        assert!(plain.route.segments.is_empty());
+        assert!(!black.route.segments.is_empty());
+        assert_eq!(black.target.get_pixel(16, 32)[0], 0);
+        assert_eq!(black.target.get_pixel(48, 32)[0], 255);
+        assert_eq!(black.target.get_pixel(0, 0)[0], 255);
     }
 
     #[test]

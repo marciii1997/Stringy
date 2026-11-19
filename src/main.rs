@@ -9,7 +9,7 @@ use std::{
 
 use clap::Parser;
 use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
-use stringy::{Settings, generate_guided};
+use stringy::{Settings, generate_with_ink};
 
 #[derive(Parser)]
 #[command(
@@ -22,6 +22,9 @@ struct Args {
     /// Optional RGB guidance PNG aligned with the final square raster.
     #[arg(long)]
     guide: Option<PathBuf>,
+    /// Add darkness from this aligned grayscale mask after applying the RGB guide.
+    #[arg(long, requires = "guide")]
+    background_ink: Option<PathBuf>,
     /// Directory for the two PNG previews, path.json, and segments.csv.
     #[arg(short, long, default_value = "output")]
     output: PathBuf,
@@ -120,12 +123,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(image::open)
         .transpose()?
         .map(|im| im.to_rgb8());
-    let art = generate_guided(&source, &settings, guide.as_ref(), |progress| {
-        if progress.segments > 0 && progress.segments % 1000 == 0 {
-            eprintln!("{} segments", progress.segments);
-        }
-        ControlFlow::Continue(())
-    })?;
+    let ink = args
+        .background_ink
+        .map(image::open)
+        .transpose()?
+        .map(|im| im.into_luma8());
+    let art = generate_with_ink(
+        &source,
+        &settings,
+        guide.as_ref(),
+        ink.as_ref(),
+        |progress| {
+            if progress.segments > 0 && progress.segments % 1000 == 0 {
+                eprintln!("{} segments", progress.segments);
+            }
+            ControlFlow::Continue(())
+        },
+    )?;
     let elapsed = start.elapsed();
 
     fs::create_dir_all(&args.output)?;

@@ -114,6 +114,7 @@
     const bg = num("background") / 100,
       cloth = num("clothing") / 100,
       gamma = num("gamma");
+    const black = form.elements.background_color.value === "black";
     const layer = Math.floor(layers.indexOf(tool.value) / 2);
     const tint = [
       [20, 182, 114],
@@ -125,9 +126,9 @@
       const lum =
         (0.2126 * colors[i] + 0.7152 * colors[i + 1] + 0.0722 * colors[i + 2]) /
         255;
+      const blend = bg * (1 - subject);
       const dark =
-        (1 - lum ** gamma) *
-        (1 - bg * (1 - subject)) *
+        ((1 - lum ** gamma) * (1 - blend) + (black ? blend : 0)) *
         (1 - (cloth * subject * maps[2][i]) / 255);
       tone.data[i] = tone.data[i + 1] = tone.data[i + 2] = 255 * (1 - dark);
       tone.data[i + 3] = overlay.data[i + 3] = 255;
@@ -156,7 +157,8 @@
     v.beginPath();
     v.arc(128, 128, 128, 0, Math.PI * 2);
     v.clip();
-    v.fillStyle = "white";
+    const padding = Math.round(255 * (black ? 1 - bg : 1));
+    v.fillStyle = `rgb(${padding}, ${padding}, ${padding})`;
     v.fillRect(0, 0, 256, 256);
     v.drawImage(processed.canvas, x, y, sw, sh, 0, 0, 256, 256);
     v.restore();

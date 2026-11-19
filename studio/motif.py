@@ -234,6 +234,10 @@ def guide_for(art, analysis, size=512):
     bg = params["background"] / 100 * (1 - subject)
     cloth = params["clothing"] / 100 * clothing * subject
     fade = 1 - (1 - bg) * (1 - cloth)
+    # D' = D * (1 - fade) + ink, with clothing lightened after the background blend.
+    ink = None
+    if params.get("background_color") == "black" and params["background"]:
+        ink = bg * (1 - cloth)
     priority = focus * params["focus"] / 100
     # A bright patch within a marked face (teeth, eye reflections) costs more to cross.
     priority += focus * params["highlights"] / 100 * np.clip((light - 0.65) / 0.3, 0, 1)
@@ -242,6 +246,8 @@ def guide_for(art, analysis, size=512):
         # Sobel responses at two viewing scales suppress isolated pixel noise.
         # The Rust objective compares signed differences across these transitions.
         target_light = 1 - (1 - light) * (1 - fade)
+        if ink is not None:
+            target_light -= ink
         for sigma in (0.8, 2.4):
             smooth = cv2.GaussianBlur(target_light, (0, 0), sigma)
             dx = cv2.Sobel(smooth, cv2.CV_32F, 1, 0, ksize=3, scale=sigma / 8)
@@ -250,4 +256,6 @@ def guide_for(art, analysis, size=512):
         contours = np.clip(contours * 12, 0, 1)
         contours *= params["edges"] / 100 * np.maximum(0.15 + 0.85 * subject, focus)
     rgb = np.stack((fade, np.clip(priority, 0, 1), contours), axis=2)
-    return Image.fromarray(np.rint(255 * rgb).astype(np.uint8))
+    guide = Image.fromarray(np.rint(255 * rgb).astype(np.uint8))
+    ink_mask = Image.fromarray(np.rint(255 * ink).astype(np.uint8)) if ink is not None else None
+    return guide, ink_mask
