@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
@@ -5,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
+from PIL import Image
 
 from .forms import CalculationForm
 from .laser import LaserForm, laser_svg
@@ -74,7 +77,7 @@ def door(request, pk, day):
                 "path": path,
                 "start": start,
                 "initial": cursor - start,
-                "anchors": gift.artwork.anchors,
+                **playback_layout(gift.artwork, path),
                 "opacity": gift.artwork.opacity,
                 "width": gift.artwork.thread / gift.artwork.diameter,
             },
@@ -117,6 +120,14 @@ def private_artwork(view):
     )
 
 
+def playback_layout(art, released=None):
+    layout = {"anchors": art.anchors}
+    if art.nail_positions:
+        ids = range(art.anchors) if released is None else sorted(set(released))
+        layout["positions"] = {i: art.nail_positions[i] for i in ids}
+    return layout
+
+
 @private_artwork
 def simulation(request, pk):
     art = get_object_or_404(Artwork.objects.defer("source", "target", "preview"), pk=pk)
@@ -130,7 +141,7 @@ def simulation(request, pk):
             "playback": {
                 "path": art.route["path"],
                 "start": 0,
-                "anchors": art.anchors,
+                **playback_layout(art),
                 "opacity": art.opacity,
                 "width": art.thread / art.diameter,
             },
@@ -144,6 +155,12 @@ def recalculate(request, pk):
     art = get_object_or_404(Artwork.objects.defer("target", "preview", "route", "source"), pk=pk)
     initial = {field: getattr(art, field) for field in CalculationForm.Meta.fields}
     form = CalculationForm(request.POST if request.method == "POST" else None, initial=initial)
+    form.fields["nail_positions"].widget.attrs.update(
+        {
+            "data-photo-url": reverse("asset", args=[art.pk, "source"]),
+            "data-pad": "1" if art.preparation.get("pad") else "0",
+        }
+    )
     if form.is_valid():
         variant = form.save(commit=False)
         variant.source = art.source
@@ -157,10 +174,15 @@ def recalculate(request, pk):
 @private_artwork
 def laser(request, pk):
     art = get_object_or_404(
-        Artwork.objects.only("title", "diameter", "anchors", "route"), pk=pk, state=Artwork.State.READY
+        Artwork.objects.only("title", "diameter", "anchors", "route", "nail_positions"),
+        pk=pk,
+        state=Artwork.State.READY,
     )
     form = LaserForm(
-        request.POST if request.method == "POST" else None, diameter=art.diameter, count=art.anchors
+        request.POST if request.method == "POST" else None,
+        diameter=art.diameter,
+        count=art.anchors,
+        free_anchors=art.route.get("anchors") if art.nail_positions else None,
     )
     if form.is_valid():
         response = HttpResponse(laser_svg(art.route, **form.cleaned_data), content_type="image/svg+xml")
@@ -171,6 +193,11 @@ def laser(request, pk):
 
 @private_artwork
 def asset(request, pk, kind):
+    if kind == "source":
+        art = get_object_or_404(Artwork.objects.only("source"), pk=pk)
+        with Image.open(BytesIO(art.source)) as photo:
+            mime = Image.MIME[photo.format]
+        return HttpResponse(bytes(art.source), content_type=mime)
     if kind not in ("preview", "target", "route"):
         raise Http404
     art = get_object_or_404(Artwork.objects.only(kind), pk=pk, state=Artwork.State.READY)

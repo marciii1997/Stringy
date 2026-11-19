@@ -17,7 +17,7 @@ pub fn render_preview(
         return Err(InvalidInput("invalid preview size or anchor sequence"));
     }
     let fine = (size as usize * 2).max(2048);
-    let canvas = Canvas::new(fine, settings.diameter_mm, settings.anchors);
+    let canvas = Canvas::for_settings(fine, settings);
     let width = settings.thread_mm / settings.diameter_mm * (fine - 1) as f64;
     let mut darkness = vec![0.0; fine * fine];
     for pair in path.windows(2) {

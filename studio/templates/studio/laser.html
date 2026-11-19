@@ -3,12 +3,13 @@
 {% block content %}
   <a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
   <h1>Canvas für den Laser</h1>
-  <p>{{ art.anchors }} Anker auf einem Kreis mit Ø {{ art.diameter|floatformat:"-2" }} mm.
-     Anker 0 liegt oben, die Nummern laufen im Uhrzeigersinn.</p>
+  {% if art.nail_positions %}<p>{{ art.anchors }} frei platzierte Nägel auf einer Leinwand mit Ø {{ art.diameter|floatformat:"-2" }} mm. Die Nummern entsprechen dem Nagelplan im Editor.</p>
+  {% else %}<p>{{ art.anchors }} Anker auf einem Kreis mit Ø {{ art.diameter|floatformat:"-2" }} mm.
+     Anker 0 liegt oben, die Nummern laufen im Uhrzeigersinn.</p>{% endif %}
   <form method="post" class="laser-form">
     {% csrf_token %}
     {{ form.as_p }}
-    <p>Der Werkstückdurchmesser ergibt sich aus Ankerkreisdurchmesser plus zweimal Rand.
+    <p>Der Werkstückdurchmesser ergibt sich aus dem eingestellten Durchmesser plus zweimal Rand.
     Beim Import die Originalgröße in Millimetern übernehmen.</p>
     <button>Laserdatei als SVG herunterladen</button>
   </form>

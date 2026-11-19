@@ -91,3 +91,30 @@ class CanvasTests(TestCase):
         self.client.post(url, {"step": 0, "action": "next"})
         self.gift.refresh_from_db()
         self.assertEqual((self.gift.finished, self.gift.step), (1, 0))
+
+    @patch("django.utils.timezone.localdate", return_value=date(2026, 12, 1))
+    def test_free_layout_is_shared_by_export_and_player_and_doors_limit_disclosure(self, _):
+        layout = [[0, 0], [0.01, 0], [0, 0.5], [-0.9, 0]]
+        self.art.nail_positions = layout
+        self.art.anchors = len(layout)
+        self.art.route = {
+            "settings": {"diameter_mm": 600, "nail_positions": layout},
+            "anchors": [{"id": i, "x_mm": x * 300, "y_mm": y * 300} for i, (x, y) in enumerate(layout)],
+            "path": [0, 1, 2, 3] * 12 + [0],
+        }
+        self.art.save()
+        self.client.force_login(self.admin)
+        sim = self.client.get(reverse("simulation", args=[self.art.pk]))
+        self.assertEqual(list(sim.context["playback"]["positions"].values()), layout)
+        url = reverse("laser", args=[self.art.pk])
+        data = {"mode": "hole", "feature_mm": 4, "margin_mm": 5, "labels": "all"}
+        self.assertIn("feature_mm", self.client.post(url, data).context["form"].errors)
+        svg = ET.fromstring(self.client.post(url, {**data, "feature_mm": 1, "margin_mm": 5}).content)
+        for p in self.art.route["anchors"]:
+            nail = svg.find(f".//*[@id='anker-{p['id']}']")
+            self.assertAlmostEqual(float(nail.get("cx")), 305 + p["x_mm"])
+            self.assertAlmostEqual(float(nail.get("cy")), 305 + p["y_mm"])
+        self.client.force_login(self.person)
+        playback = self.client.get(reverse("door", args=[self.gift.pk, 1])).context["playback"]
+        self.assertEqual(playback["path"], [0, 1, 2])
+        self.assertEqual(playback["positions"], {0: layout[0], 1: layout[1], 2: layout[2]})

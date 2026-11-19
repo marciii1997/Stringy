@@ -25,6 +25,9 @@ const MIN_GAIN: f64 = 1e-8;
 #[serde(default)]
 pub struct Settings {
     pub anchors: usize,
+    /// Coordinates relative to the canvas radius, positive y down. Empty selects the ring.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub nail_positions: Vec<[f64; 2]>,
     pub diameter_mm: f64,
     pub thread_mm: f64,
     pub opacity: f32,
@@ -47,6 +50,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             anchors: 360,
+            nail_positions: Vec::new(),
             diameter_mm: 600.0,
             thread_mm: 0.25,
             opacity: 1.0,
@@ -82,6 +86,22 @@ impl Settings {
     fn validate(&self) -> Result<(), InvalidInput> {
         if !(3..=720).contains(&self.anchors) {
             return Err(InvalidInput("anchors must be between 3 and 720"));
+        }
+        if !self.nail_positions.is_empty() {
+            if self.nail_positions.len() != self.anchors {
+                return Err(InvalidInput("anchor count disagrees with nail positions"));
+            }
+            for (i, &[x, y]) in self.nail_positions.iter().enumerate() {
+                if !x.is_finite() || !y.is_finite() || x.hypot(y) > 1.0 + 1e-12 {
+                    return Err(InvalidInput("nail outside canvas"));
+                }
+                if self.nail_positions[..i]
+                    .iter()
+                    .any(|p| (x - p[0]).hypot(y - p[1]) < 1e-6)
+                {
+                    return Err(InvalidInput("coincident nail positions"));
+                }
+            }
         }
         if !(64..=1024).contains(&self.raster_size) {
             return Err(InvalidInput(
@@ -122,7 +142,8 @@ impl Settings {
                 "opacity must be greater than zero and at most one",
             ));
         }
-        if !(1..=self.anchors / 2).contains(&self.min_anchor_gap) {
+        if self.nail_positions.is_empty() && !(1..=self.anchors / 2).contains(&self.min_anchor_gap)
+        {
             return Err(InvalidInput(
                 "minimum anchor gap must be between 1 and half the anchor count",
             ));
@@ -206,6 +227,29 @@ struct Lines {
     cache: Vec<Sample>,
     width_px: f64,
     coarse_cells: Vec<[u32; 48]>,
+    refinement_neighbors: Vec<Vec<usize>>,
+}
+
+// A direct winding step cannot pass through the center of an intervening nail.
+// Coordinates use the unit radius; the tolerance only covers rounding at collinearity.
+fn crosses_intermediate_nail(pins: &[[f64; 2]], from: usize, to: usize) -> bool {
+    if pins.is_empty() {
+        return false;
+    }
+    let [x, y] = pins[from];
+    let dx = pins[to][0] - x;
+    let dy = pins[to][1] - y;
+    let length_sq = dx * dx + dy * dy;
+    let tolerance = 1e-10 * length_sq.sqrt();
+    pins.iter().enumerate().any(|(i, p)| {
+        if i == from || i == to {
+            return false;
+        }
+        let px = p[0] - x;
+        let py = p[1] - y;
+        let along = px * dx + py * dy;
+        along > 0. && along < length_sq && (px * dy - py * dx).abs() <= tolerance
+    })
 }
 
 impl Lines {
@@ -218,9 +262,16 @@ impl Lines {
         let mut scratch = Vec::new();
         let mut cache_has_room = sample_capacity > 0 && settings.max_segments > 0;
 
+        let gap = if settings.nail_positions.is_empty() {
+            settings.min_anchor_gap
+        } else {
+            1
+        };
         for from in 0..settings.anchors {
-            for to in from + settings.min_anchor_gap..settings.anchors {
-                if settings.anchors - (to - from) < settings.min_anchor_gap {
+            for to in from + gap..settings.anchors {
+                if settings.anchors - (to - from) < gap
+                    || crosses_intermediate_nail(&settings.nail_positions, from, to)
+                {
                     continue;
                 }
                 let id = lines.len();
@@ -275,7 +326,24 @@ impl Lines {
         } else {
             Vec::new()
         };
+        let refinement_neighbors = (0..settings.anchors)
+            .map(|id| {
+                if settings.nail_positions.is_empty() {
+                    return [-16, -8, -4, -2, -1, 1, 2, 4, 8, 16]
+                        .iter()
+                        .map(|offset| {
+                            (id as isize + offset).rem_euclid(settings.anchors as isize) as usize
+                        })
+                        .collect();
+                }
+                let mut neighbors = moves[id].clone();
+                neighbors
+                    .sort_by(|a, b| lines[a.line].length_mm.total_cmp(&lines[b.line].length_mm));
+                neighbors.iter().take(10).map(|m| m.anchor).collect()
+            })
+            .collect();
         Self {
+            refinement_neighbors,
             coarse_cells,
             lines,
             moves,
@@ -448,8 +516,7 @@ impl Search<'_> {
             self.change(right, false);
             let mut best = self.pair_gain(left, right);
             let mut winner = (v, left, right);
-            for offset in [-16, -8, -4, -2, -1, 1, 2, 4, 8, 16] {
-                let x = (v as isize + offset).rem_euclid(self.settings.anchors as isize) as usize;
+            for &x in &self.lines.refinement_neighbors[v] {
                 if let (Some(a), Some(b)) = (self.lines.id(u, x), self.lines.id(x, w)) {
                     let gain = self.pair_gain(a, b);
                     if gain > best + MIN_GAIN {
@@ -499,7 +566,7 @@ pub fn generate_with_ink(
         return Err(InvalidInput("source image must have nonzero dimensions"));
     }
     settings.validate()?;
-    let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
+    let canvas = Canvas::for_settings(settings.raster_size, settings);
     let mut target = canvas.target(source, settings);
     if let Some(map) = guide {
         let size = canvas.size as u32;
@@ -699,6 +766,39 @@ mod tests {
     }
 
     #[test]
+    fn free_nails_define_edges_lengths_and_replay_with_stable_ids() {
+        let mut settings = Settings {
+            anchors: 4,
+            nail_positions: vec![[0., 0.], [0.5, 0.], [0., 0.5], [-0.25, -0.5]],
+            raster_size: 64,
+            max_segments: 24,
+            thread_mm: 2.,
+            ..Default::default()
+        };
+        let source = DynamicImage::ImageLuma8(GrayImage::from_pixel(64, 64, Luma([0])));
+        let art = generate(&source, &settings, |_| ControlFlow::Continue(())).unwrap();
+        assert!(!art.route.segments.is_empty());
+        assert_eq!(art.route.anchors[1].x_mm, 150.);
+        assert_eq!(art.route.anchors[3].y_mm, -150.);
+        let canvas = Canvas::for_settings(64, &settings);
+        let lines = Lines::new(&canvas, &settings);
+        assert!(lines.id(0, 1).is_some());
+        let collinear = [[0., 0.], [0.4, 0.], [0.8, 0.]];
+        assert!(crosses_intermediate_nail(&collinear, 0, 2));
+        assert!(!crosses_intermediate_nail(&collinear, 0, 1));
+        assert_eq!(lines.lines[lines.id(0, 2).unwrap()].length_mm, 150.);
+        let saved = serde_json::to_vec(&art.route.settings).unwrap();
+        let restored: Settings = serde_json::from_slice(&saved).unwrap();
+        let rendered = render_preview(&restored, &[0, 1], 128).unwrap();
+        assert!(rendered.get_pixel(80, 64)[0] < 255);
+        assert_eq!(rendered.get_pixel(64, 10)[0], 255);
+        settings.nail_positions[3] = [0.9, 0.9];
+        assert!(settings.validate().is_err());
+        settings.nail_positions[3] = [0., 0.];
+        assert!(settings.validate().is_err());
+    }
+
+    #[test]
     fn black_background_changes_the_path_and_leaves_the_subject_and_corners_white() {
         let settings = Settings {
             raster_size: 64,
@@ -864,7 +964,7 @@ mod tests {
             assert!(segment.length_mm > 0.0 && segment.length_mm <= settings.diameter_mm + 1e-9);
         }
         // Independently replay the exported chords, including changed interior anchors.
-        let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
+        let canvas = Canvas::for_settings(settings.raster_size, &settings);
         let mut replay = vec![0.0; canvas.inside.len()];
         for segment in &route.segments {
             canvas.rasterize(

@@ -24,14 +24,31 @@ pub(crate) struct Canvas {
 }
 
 impl Canvas {
+    #[cfg(test)]
     pub fn new(size: usize, diameter_mm: f64, anchor_count: usize) -> Self {
+        Self::for_settings(
+            size,
+            &crate::Settings {
+                anchors: anchor_count,
+                diameter_mm,
+                ..Default::default()
+            },
+        )
+    }
+
+    pub fn for_settings(size: usize, settings: &crate::Settings) -> Self {
+        let anchor_count = settings.anchors;
+        let diameter_mm = settings.diameter_mm;
         let radius_px = (size - 1) as f64 / 2.0;
         let radius_mm = diameter_mm / 2.0;
         let mut anchors = Vec::with_capacity(anchor_count);
         let mut points = Vec::with_capacity(anchor_count);
         for id in 0..anchor_count {
-            let angle = TAU * id as f64 / anchor_count as f64 - FRAC_PI_2;
-            let (y, x) = angle.sin_cos();
+            let [x, y] = settings.nail_positions.get(id).copied().unwrap_or_else(|| {
+                let angle = TAU * id as f64 / anchor_count as f64 - FRAC_PI_2;
+                let (y, x) = angle.sin_cos();
+                [x, y]
+            });
             anchors.push(Anchor {
                 id,
                 x_mm: x * radius_mm,

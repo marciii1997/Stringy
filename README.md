@@ -258,3 +258,29 @@ docker compose up -d --no-build --force-recreate
 
 Compose führt die Datenbankmigration automatisch aus. Das benannte Datenvolume enthält die Motive
 und Kalender. Die lokale Oberfläche ist unter http://localhost:8000 erreichbar.
+
+### Freier Nagelplan
+
+Beim Foto-Upload, im Motiv-Editor oder unter **Parameter ändern und neu berechnen**
+wählst du unter **Nagelanordnung** die Option **Nägel frei platzieren**. Setze mit
+Maus oder Touch 3 bis 720 Punkte im runden Bildausschnitt. Du kannst auch zuerst
+die gewünschte Ankerzahl einstellen, den Randkreis übernehmen und dann einzelne
+Nägel verschieben oder Innenpunkte ergänzen. Unter **Position in Millimetern**
+gibst du die Koordinaten eines neuen oder ausgewählten Nagels exakt ein. Der Faden kann nur die Fläche zwischen
+den äußersten Nägeln erreichen. Eine direkte Verbindung durch den Mittelpunkt eines
+weiteren Nagels wird bei der Berechnung ausgelassen.
+
+Die Reihenfolge der Punkte bestimmt die Nagelnummern. Die Folge beginnt bei 0.
+Im Editor lässt sich ein Nagel durch Antippen oder per Nummer auswählen und entfernen.
+Nach dem Entfernen rücken die folgenden Nummern auf. Eine Neuberechnung speichert
+den Plan als neue Variante. Der Nagelplan liegt auf der Leinwand, beim Zoomen oder
+Verschieben des Fotos bleibt er an derselben Stelle.
+
+Im **Fadenverlauf** blendet **Nägel anzeigen** die Punkte ein. Der aktuelle Nagel
+ist farbig hervorgehoben. Im Kalendertürchen siehst du die freien Nägel der bereits
+freigeschalteten Fadenfolge. Der Laserexport verwendet alle gespeicherten
+Mittelpunkte und prüft die Lochgröße gegen den kleinsten realen Nagelabstand.
+
+Die CLI akzeptiert mit `--nail-positions naegel.json` eine geordnete JSON-Liste
+wie `[[0,-1],[0.7,0.5],[-0.7,0.5],[0,0]]`. Der Mittelpunkt ist `[0,0]`, der
+Radius entspricht 1, y wächst nach unten. Die Liste legt die Ankerzahl fest.

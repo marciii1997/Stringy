@@ -1,0 +1,6 @@
+.nail-editor { display: inline-block; vertical-align: top; width: min(100%, 35rem); }
+.nail-editor [hidden] { display: none; }
+.nail-editor canvas { display: block; width: 100%; height: auto; background: #edece5; border-radius: .4rem; cursor: crosshair; touch-action: none; }
+.nail-tools { display:flex; align-items:center; flex-wrap:wrap; gap:.65rem; margin:.75rem 0; }
+.nail-tools label { width:auto; }
+.nail-editor small { display:block; margin:.5rem 0; }

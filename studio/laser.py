@@ -7,6 +7,14 @@ from xml.etree import ElementTree as ET
 from django import forms
 
 
+def nearest_spacing(anchor, anchors):
+    return min(
+        math.hypot(a["x_mm"] - anchor["x_mm"], a["y_mm"] - anchor["y_mm"])
+        for a in anchors
+        if a["id"] != anchor["id"]
+    )
+
+
 class LaserForm(forms.Form):
     mode = forms.ChoiceField(
         label="Ankerpositionen",
@@ -23,7 +31,7 @@ class LaserForm(forms.Form):
         decimal_places=2,
     )
     margin_mm = forms.DecimalField(
-        label="Rand vom Ankermittelpunkt zur Außenkante (mm)",
+        label="Zugabe am Leinwandradius (mm)",
         initial=5,
         min_value=Decimal("0.1"),
         max_value=100,
@@ -40,9 +48,17 @@ class LaserForm(forms.Form):
     )
     outline = forms.BooleanField(label="Außenkreis als Schnittkontur hinzufügen", required=False)
 
-    def __init__(self, *args, diameter, count, **kwargs):
+    def __init__(self, *args, diameter, count, free_anchors=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.pitch = diameter * math.sin(math.pi / count)
+        self.pitch = (
+            min(nearest_spacing(a, free_anchors) for a in free_anchors)
+            if free_anchors
+            else diameter * math.sin(math.pi / count)
+        )
+        self.inset = (
+            max(0, diameter / 2 - max(math.hypot(a["x_mm"], a["y_mm"]) for a in free_anchors))
+            if free_anchors else 0
+        )
         self.fields["feature_mm"].initial = min(1, round(self.pitch * 0.6, 2))
 
     def clean(self):
@@ -50,11 +66,13 @@ class LaserForm(forms.Form):
         width, margin = data.get("feature_mm"), data.get("margin_mm")
         if width is not None and float(width) >= self.pitch:
             self.add_error(
-                "feature_mm", f"Der Abstand zweier Ankermittelpunkte beträgt {self.pitch:.3f} mm."
+                "feature_mm",
+                f"Der Abstand zweier Ankermittelpunkte beträgt {self.pitch:.3f} mm.",
             )
-        if width is not None and margin is not None and margin <= width / 2:
+        if width is not None and margin is not None and self.inset + float(margin) <= float(width) / 2:
             self.add_error(
-                "margin_mm", "Der Rand muss größer als die halbe Kreuzbreite bzw. der Lochradius sein."
+                "margin_mm",
+                "Der Abstand zur Außenkante muss größer als die halbe Kreuzbreite bzw. der Lochradius sein.",
             )
         return data
 
@@ -69,7 +87,18 @@ STROKES = (
     (0, 1, 0, 0),
     (0, 1, 1, 1),
 )
-DIGITS = ("012345", "12", "01643", "01623", "5612", "05623", "056432", "012", "0123456", "015623")
+DIGITS = (
+    "012345",
+    "12",
+    "01643",
+    "01623",
+    "5612",
+    "05623",
+    "056432",
+    "012",
+    "0123456",
+    "015623",
+)
 
 
 def number_path(number, x, y, scale):
@@ -107,7 +136,8 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
 
     holes = mode == "hole"
     positions = layer(
-        "anker-lochkonturen" if holes else "anker-markierungen", "#ff0000" if holes else "#000000"
+        "anker-lochkonturen" if holes else "anker-markierungen",
+        "#ff0000" if holes else "#000000",
     )
     numbers = layer("nummern-gravur", "#0000ff") if labels != "none" else None
     # Keep upright digits clear of both the anchor and the label across the 0/last seam.
@@ -119,7 +149,8 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
         if labels == "all" or a["id"] == 0 or (labels == "ten" and a["id"] % 10 == 0)
     ]
     scale = 1.1
-    if len(numbered) > 1:
+    free = bool(route["settings"].get("nail_positions"))
+    if not free and len(numbered) > 1:
         gap = min(numbered[1], len(anchors) - numbered[-1])
         scale = min(scale, 2 * label_radius * math.sin(math.pi * gap / len(anchors)) / 5.5)
     for anchor in anchors:
@@ -128,7 +159,12 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
         anchor_id = f"anker-{anchor['id']}"
         if holes:
             ET.SubElement(
-                positions, "circle", id=anchor_id, cx=f"{x:.4f}", cy=f"{y:.4f}", r=f"{half:.4f}"
+                positions,
+                "circle",
+                id=anchor_id,
+                cx=f"{x:.4f}",
+                cy=f"{y:.4f}",
+                r=f"{half:.4f}",
             )
         else:
             ET.SubElement(
@@ -138,15 +174,28 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
                 d=f"M{x - half:.4f},{y:.4f} h{2 * half:.4f} M{x:.4f},{y - half:.4f} v{2 * half:.4f}",
             )
         if numbers is not None and anchor["id"] in numbered:
+            label_x, label_y = (
+                center + dx * label_radius / radius,
+                center + dy * label_radius / radius,
+            )
+            label_scale = scale
+            if free:
+                # Keep the label within this nail's half of the nearest-neighbor distance.
+                room = nearest_spacing(anchor, anchors) / 2 - half
+                label_scale = min(scale, room / 6)
+                offset = half + 3 * label_scale
+                distance = math.hypot(dx, dy)
+                ux, uy = (dx / distance, dy / distance) if distance else (0, 1)
+                label_x, label_y = x - offset * ux, y - offset * uy
             ET.SubElement(
                 numbers,
                 "path",
                 id=f"nummer-{anchor['id']}",
                 d=number_path(
                     anchor["id"],
-                    center + dx * label_radius / radius,
-                    center + dy * label_radius / radius,
-                    scale,
+                    label_x,
+                    label_y,
+                    label_scale,
                 ),
             )
     if outline:

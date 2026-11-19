@@ -1,14 +1,19 @@
 const player = document.querySelector(".player");
-const {path, anchors, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, positions, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
-const slider = player.querySelector("input");
+const slider = player.querySelector("input[type=range]");
+const showNails = player.querySelector("[data-nails]");
 const output = player.querySelector("output");
 const back = player.querySelector("[data-back]");
 const next = player.querySelector("[data-next]");
 const size = canvas.width;
-const radius = (size - 6) / 2;
+const radius = (size - 16) / 2;
 const points = Array.from({length: anchors}, (_, index) => {
+    if (positions) {
+        const p = positions[index];
+        return p ? [size/2 + radius*p[0], size/2 + radius*p[1]] : null;
+    }
     const angle = 2 * Math.PI * index / anchors - Math.PI / 2;
     return [size / 2 + radius * Math.cos(angle), size / 2 + radius * Math.sin(angle)];
 });
@@ -34,11 +39,35 @@ function draw() {
         ctx.lineTo(...points[path[i]]);
         ctx.stroke();
     }
+    if (showNails.checked) {
+        ctx.globalAlpha = 1;
+        const current = path[start + step];
+        points.forEach((p, id) => {
+            if (!p) return;
+            const [x,y] = p;
+            ctx.beginPath();
+            ctx.arc(x, y, id === current ? 6 : 3, 0, 2*Math.PI);
+            ctx.fillStyle = id === current ? "#a33153" : "#146664";
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 1.3;
+            ctx.fill(); ctx.stroke();
+            if (id === current || anchors <= 45) {
+                ctx.font = "bold 14px system-ui";
+                ctx.textAlign = x > size/2 ? "right" : "left";
+                const dx = x > size/2 ? -7 : 7;
+                ctx.lineWidth = 3;
+                ctx.strokeText(String(id), x+dx, y+4);
+                ctx.fillStyle = "#142e2c";
+                ctx.fillText(String(id), x+dx, y+4);
+            }
+        });
+    }
     back.disabled = step === 0;
     next.disabled = step === Number(slider.max);
     output.value = step === 0 ? `Start an Anker ${path[start]}` :
         `${step} / ${slider.max} · Anker ${path[start + step - 1]} → ${path[start + step]}`;
 }
+showNails.addEventListener("change", draw);
 slider.addEventListener("input", draw);
 back.addEventListener("click", () => { slider.stepDown(); draw(); });
 next.addEventListener("click", () => { slider.stepUp(); draw(); });

@@ -222,6 +222,8 @@ progress,input[type=range] {
   background:white;
 }
 
+.player canvas { border-radius:4px; }
+
 .controls {
   display:flex;
   gap:.5rem;

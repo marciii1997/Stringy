@@ -204,3 +204,25 @@ class MotifTests(TestCase):
         self.assertEqual(ink.getpixel((50, 50)), 102)
         self.assertEqual(guide.getpixel((5, 5))[0], 0)
         self.assertEqual(ink.getpixel((5, 5)), 0)
+
+    def test_free_nail_variants_keep_geometry_and_reject_invalid_layouts(self):
+        self.client.force_login(self.admin)
+        url = reverse("motif", args=[self.art.pk])
+        points = [[0, 0], [0.3, 0.4], [-0.5, 0]]
+        data = {**self.data(), "action": "threads", "nail_mode": "free", "anchors": 360}
+        for bad in (
+            [],
+            points[:2],
+            [*points, [1, 1]],
+            [*points, points[0]],
+            [*points, [True, 0]],
+        ):
+            response = self.client.post(url, {**data, "nail_positions": json.dumps(bad)})
+            self.assertIn("nail_positions", response.context["calc"].errors)
+        self.assertFalse(Artwork.objects.filter(previous=self.art).exists())
+        response = self.client.post(url, {**data, "nail_positions": json.dumps(points)})
+        self.assertEqual(response.status_code, 302)
+        variants = Artwork.objects.filter(previous=self.art)
+        self.assertEqual(variants.count(), 2)
+        for art in variants:
+            self.assertEqual((art.nail_positions, art.anchors), (points, 3))

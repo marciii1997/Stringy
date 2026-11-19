@@ -4,6 +4,7 @@
           height="840"
           aria-label="Fadensimulation des gewählten Fortschritts">
   </canvas>
+  <label><input type="checkbox" data-nails {% if playback.positions %}checked{% endif %}> Nägel anzeigen</label>
   <div class="controls">
     <button type="button" data-back aria-label="Eine Verbindung zurück">−</button>
     <input aria-label="Simulationsfortschritt" type="range" min="0" value="0">

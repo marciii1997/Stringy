@@ -93,6 +93,7 @@ def process_one():
                         pk=art.previous_id,
                         state=Artwork.State.READY,
                         anchors=art.anchors,
+                        nail_positions=art.nail_positions,
                         diameter=art.diameter,
                         thread=art.thread,
                         opacity=art.opacity,
@@ -138,8 +139,6 @@ def optimizer_command(art, source, folder, size):
         str(size),
         "--preview-size",
         "1024",
-        "--anchors",
-        str(art.anchors),
         "--diameter-mm",
         str(art.diameter),
         "--thread-mm",
@@ -161,6 +160,12 @@ def optimizer_command(art, source, folder, size):
         "--max-segments",
         str(art.budget),
     ]
+    if art.nail_positions:
+        layout = folder / "nails.json"
+        layout.write_text(json.dumps(art.nail_positions))
+        command.extend(["--nail-positions", str(layout)])
+    else:
+        command.extend(["--anchors", str(art.anchors)])
     if art.preparation.get("pad"):
         command.append("--pad-crop")
     return command

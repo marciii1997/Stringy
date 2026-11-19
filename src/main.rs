@@ -35,6 +35,9 @@ struct Args {
     /// Directory for the two PNG previews, path.json, and segments.csv.
     #[arg(short, long, default_value = "output")]
     output: PathBuf,
+    /// JSON array of [x,y] nail positions relative to the radius, centered, positive y down.
+    #[arg(long, conflicts_with_all = ["anchors", "min_anchor_gap", "replay"])]
+    nail_positions: Option<PathBuf>,
     /// Number of equally spaced anchors.
     #[arg(long, default_value_t = Settings::default().anchors)]
     anchors: usize,
@@ -103,8 +106,32 @@ fn main() -> Result<(), Box<dyn Error>> {
         preview.save(args.output.join("preview.png"))?;
         return Ok(());
     }
+    let nail_positions: Vec<[f64; 2]> = match args.nail_positions {
+        Some(path) => {
+            let pins: Vec<[f64; 2]> = serde_json::from_reader(File::open(path)?)?;
+            if pins.is_empty() {
+                return Err("empty nail layout".into());
+            }
+            pins
+        }
+        None => Vec::new(),
+    };
     let settings = Settings {
-        anchors: args.anchors,
+        anchors: if nail_positions.is_empty() {
+            args.anchors
+        } else {
+            nail_positions.len()
+        },
+        min_anchor_gap: if nail_positions.is_empty() {
+            args.min_anchor_gap.unwrap_or_else(|| {
+                Settings::default()
+                    .min_anchor_gap
+                    .min((args.anchors / 4).max(1))
+            })
+        } else {
+            1
+        },
+        nail_positions,
         diameter_mm: args.diameter_mm,
         thread_mm: args.thread_mm,
         opacity: args.opacity,
@@ -117,11 +144,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         gamma: args.gamma,
         max_segments: args.max_segments,
         raster_size: args.raster_size,
-        min_anchor_gap: args.min_anchor_gap.unwrap_or_else(|| {
-            Settings::default()
-                .min_anchor_gap
-                .min((args.anchors / 4).max(1))
-        }),
         start_anchor: args.start_anchor,
         repeat_penalty: args.repeat_penalty,
         cache_mib: args.cache_mib,

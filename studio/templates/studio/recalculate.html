@@ -1,5 +1,6 @@
 {% extends "studio/base.html" %}
 {% block title %}Neu berechnen · Stringy{% endblock %}
+{% block head %}{{ form.media }}{% endblock %}
 {% block content %}
   <a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
   <h1>Motiv neu berechnen</h1>

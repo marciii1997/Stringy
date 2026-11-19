@@ -192,6 +192,7 @@
     v.fillRect(0, 0, 256, 256);
     v.drawImage(processed.canvas, x, y, sw, sh, 0, 0, 256, 256);
     v.restore();
+    view.dispatchEvent(new Event("tone-ready"));
     document
       .querySelectorAll("output[for]")
       .forEach((o) => (o.value = byId(o.htmlFor.value).value + " %"));

@@ -24,8 +24,9 @@ class Artwork(models.Model):
 
     title = models.CharField("Interner Motivname", max_length=100)
     source = models.BinaryField()
+    nail_positions = models.JSONField("Nagelanordnung", default=list, blank=True)
     anchors = models.PositiveIntegerField(
-        "Anker", default=360, validators=[MinValueValidator(24), MaxValueValidator(720)]
+        "Anker", default=360, validators=[MinValueValidator(3), MaxValueValidator(720)]
     )
     diameter = models.FloatField(
         "Durchmesser (mm)", default=600, validators=[MinValueValidator(100), MaxValueValidator(2000)]
