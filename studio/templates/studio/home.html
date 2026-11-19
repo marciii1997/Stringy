@@ -1,0 +1,30 @@
+{% extends "studio/base.html" %}
+{% block content %}
+  <h1>Meine Adventskalender</h1>
+  {% if user.is_staff %}
+    <nav class="actions">
+      {% if perms.studio.add_artwork %}
+        <a href="{% url 'admin:studio_artwork_add' %}">Neues Bild umwandeln</a>
+      {% endif %}
+      {% if perms.auth.add_user %}
+        <a href="{% url 'admin:auth_user_add' %}">Account anlegen</a>
+      {% endif %}
+      {% if perms.studio.add_calendar %}
+        <a href="{% url 'admin:studio_calendar_add' %}">Kalender verschenken</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+  <div class="cards">
+    {% for gift in calendars %}
+      <a class="card" href="{% url 'calendar' gift.pk %}">
+        <span>Advent {{ gift.year|stringformat:"d" }}</span>
+        <h2>{{ gift.title }}</h2>
+        <p>{{ gift.finished }} von 24 Türchen fertig</p>
+        <progress max="24" value="{{ gift.finished }}">
+        </progress>
+      </a>
+    {% empty %}
+      <p>Diesem Konto wurde noch kein Kalender zugeteilt.</p>
+    {% endfor %}
+  </div>
+{% endblock %}

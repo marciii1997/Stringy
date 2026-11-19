@@ -1,0 +1,285 @@
+:root {
+  color-scheme:light;
+  --paper:#faf7ee;
+  --ink:#183f37;
+  --accent:#983e42;
+  --line:#d6d5c3;
+  font-family:"Source Sans 3",system-ui,sans-serif;
+  color:var(--ink);
+  background:var(--paper);
+}
+
+* {
+  box-sizing:border-box;
+}
+
+body {
+  margin:0;
+}
+
+header,main {
+  max-width:1150px;
+  margin:auto;
+  padding:24px clamp(18px,5vw,68px);
+}
+
+header {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:1px solid var(--line);
+}
+
+.brand,h1,h2,.tile b {
+  font-family:"Baskervville",Georgia,serif;
+  font-weight:400;
+}
+
+.brand {
+  font-size:2.3rem;
+  text-decoration:none;
+  letter-spacing:-.07em;
+}
+
+.brand span {
+  color:var(--accent);
+}
+
+nav,.actions {
+  display:flex;
+  gap:1.2rem;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+a {
+  color:inherit;
+  text-underline-offset:4px;
+}
+
+main {
+  padding-top:clamp(30px,5vw,64px);
+  padding-bottom:64px;
+}
+
+h1 {
+  font-size:clamp(2.5rem,6vw,4.7rem);
+  letter-spacing:-.055em;
+  line-height:1.05;
+  margin:1rem 0 1.4rem;
+}
+
+h2 {
+  font-size:2rem;
+  line-height:1.1;
+  margin:.6rem 0;
+}
+
+p {
+  line-height:1.6;
+}
+
+button {
+  font:inherit;
+  border:0;
+  border-radius:4px;
+  padding:.75rem 1.15rem;
+  color:white;
+  background:var(--ink);
+  cursor:pointer;
+}
+
+button:disabled {
+  opacity:.4;
+}
+
+.link {
+  padding:0;
+  color:inherit;
+  background:none;
+  text-decoration:underline;
+  text-underline-offset:4px;
+}
+
+.cards,.doors {
+  display:grid;
+  gap:12px;
+  margin-top:2rem;
+}
+
+.cards {
+  grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));
+}
+
+.card,.tile {
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:1.4rem;
+  text-decoration:none;
+}
+
+.card {
+  background:#fffdf7;
+}
+
+.card span,.kicker {
+  font-size:.82rem;
+  font-weight:650;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+}
+
+.kicker {
+  margin:2rem 0 0;
+  color:var(--accent);
+}
+
+progress,input[type=range] {
+  accent-color:var(--accent);
+}
+
+.doors {
+  grid-template-columns:repeat(6,1fr);
+}
+
+.tile {
+  background:var(--ink);
+  color:#fffaeb;
+  display:grid;
+  gap:.5rem;
+  align-content:space-between;
+  min-height:108px;
+}
+
+.tile b {
+  font-size:2.4rem;
+}
+
+.tile span {
+  font-size:.8rem;
+}
+
+.tile.done {
+  background:#e5eadd;
+  color:var(--ink);
+}
+
+.tile.locked {
+  background:#f1eee4;
+  color:#6b6c60;
+}
+
+.tile[href]:hover,.card:hover {
+  outline:2px solid var(--accent);
+}
+
+.spread,.login {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  align-items:start;
+  gap:clamp(20px,5vw,70px);
+}
+
+.login {
+  align-items:center;
+}
+
+.spool {
+  width:100%;
+  aspect-ratio:1;
+  border-radius:50%;
+  background:repeating-conic-gradient(from 8deg at 39% 57%,transparent 0 2deg,#f3eadaaa 2deg 2.3deg),repeating-conic-gradient(from 23deg at 64% 39%,transparent 0 2deg,#e1c8acaa 2deg 2.35deg),#234d42;
+}
+
+.loginform {
+  max-width:340px;
+}
+
+.loginform label {
+  display:block;
+  font-weight:600;
+}
+
+.loginform input {
+  display:block;
+  width:100%;
+  padding:.65rem;
+  border:1px solid #8e998e;
+  border-radius:4px;
+  font:inherit;
+  background:#fffdf7;
+}
+
+.errorlist {
+  color:#933737;
+}
+
+.player canvas,.art {
+  width:100%;
+  height:auto;
+  display:block;
+  border-radius:50%;
+  background:white;
+}
+
+.controls {
+  display:flex;
+  gap:.5rem;
+  align-items:center;
+  margin:1rem 0 .5rem;
+}
+
+.controls input {
+  flex:1;
+  min-width:0;
+}
+
+.player output {
+  font-variant-numeric:tabular-nums;
+}
+
+.sequence {
+  list-style:none;
+  padding:0;
+  display:flex;
+  gap:.4rem;
+  flex-wrap:wrap;
+}
+
+.sequence li {
+  font:500 .95rem monospace;
+  color:var(--ink);
+  padding:.4rem;
+  background:#edeadb;
+  border-radius:3px;
+}
+
+.sequence li:first-child {
+  background:var(--ink);
+  color:white;
+}
+
+summary {
+  cursor:pointer;
+  margin:1rem 0;
+}
+
+@media(max-width:720px) {
+  .doors {
+    grid-template-columns:repeat(3,1fr);
+    gap:7px;
+  }
+  .tile {
+    padding:12px;
+    min-height:90px;
+  }
+  .spread,.login {
+    grid-template-columns:1fr;
+  }
+  .spool {
+    max-width:130px;
+  }
+  .login h1 {
+    margin-top:0;
+  }
+}

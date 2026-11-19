@@ -1,0 +1,31 @@
+x-studio: &studio
+  image: stringy-studio:local
+  build: .
+  environment:
+    DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY in .env setzen}
+    STRINGY_HOSTS: ${STRINGY_HOSTS:-localhost,127.0.0.1}
+    STRINGY_HTTPS: ${STRINGY_HTTPS:-1}
+    RAYON_NUM_THREADS: ${STRINGY_THREADS:-2}
+  volumes:
+    - studio-data:/data
+services:
+  migrate:
+    <<: *studio
+    command: python manage.py migrate --noinput
+  web:
+    <<: *studio
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8000:8000"
+  worker:
+    <<: *studio
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: python manage.py process_art
+volumes:
+  studio-data:

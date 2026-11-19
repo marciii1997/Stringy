@@ -1,0 +1,31 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Stringy{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'studio/site.css' %}">
+    {% block head %}{% endblock %}
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="{% url 'home' %}">Stringy<span>.</span>
+      </a>
+      <nav>
+        {% if user.is_authenticated %}
+          {% if user.is_staff %}
+            <a href="{% url 'admin:index' %}">Verwaltung</a>
+          {% endif %}
+          <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button class="link">Abmelden</button>
+          </form>
+        {% endif %}
+      </nav>
+    </header>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
+  </body>
+</html>

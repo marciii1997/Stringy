@@ -1,0 +1,27 @@
+{% extends "studio/base.html" %}
+{% block title %}{{ gift.title }} · Stringy{% endblock %}
+{% block content %}
+  <a href="{% url 'home' %}">← Meine Kalender</a>
+  <p class="kicker">Advent {{ gift.year|stringformat:"d" }}</p>
+  <h1>{{ gift.title }}</h1>
+  <p>Vom 1. bis 24. Dezember öffnet sich täglich um Mitternacht ein Türchen (Berliner Zeit).</p>
+  <p>{{ gift.artwork.anchors }} Anker · Ø {{ gift.artwork.diameter|floatformat:"-1" }} mm · Faden {{ gift.artwork.thread|floatformat:"-2" }} mm. Nummeriere ab 0 oben im Uhrzeigersinn.</p>
+  <div class="doors">
+    {% for day in days %}
+      {% if day <= unlocked %}
+        <a class="tile {% if day <= gift.finished %}done{% endif %}"
+           href="{% url 'door' gift.pk day %}">
+          <b>{{ day }}</b>
+          <span>
+            {% if day <= gift.finished %}Fertig ✓{% else %}Öffnen →{% endif %}
+          </span>
+        </a>
+      {% else %}
+        <div class="tile locked">
+          <b>{{ day }}</b>
+          <span>Ab {{ day }}.12.</span>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </div>
+{% endblock %}

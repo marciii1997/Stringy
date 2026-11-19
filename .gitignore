@@ -1,2 +1,7 @@
 /target/
 /output/
+/data/
+/staticfiles/
+.env
+__pycache__/
+/.venv/
