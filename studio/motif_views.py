@@ -1,15 +1,28 @@
 import base64
 import uuid
+from io import BytesIO
 
 from django import forms
 from django.contrib.auth.decorators import permission_required
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from PIL import Image
 
 from .forms import CalculationForm
 from .models import Artwork
-from .motif import DEFAULTS, LAYERS, PROFILES, analysis_for, framing
+from .motif import (
+    BACKGROUNDS,
+    DEFAULTS,
+    GRADIENT,
+    LAYERS,
+    PROFILES,
+    STYLES,
+    analysis_for,
+    encoded,
+    framing,
+    style_samples,
+)
 from .views import private_artwork
 
 
@@ -20,9 +33,12 @@ def slider(label):
 
 
 class MixForm(forms.Form):
+    style = forms.ChoiceField(
+        label="Bildstil", choices=tuple(STYLES.items()), initial="natural", required=False
+    )
     background_color = forms.ChoiceField(
         label="Hintergrundfarbe",
-        choices=[("white", "Weiß"), ("black", "Schwarz")],
+        choices=tuple(BACKGROUNDS.items()),
         initial="white",
         required=False,
     )
@@ -33,7 +49,9 @@ class MixForm(forms.Form):
     edges = slider("Konturen gewichten")
     pad = forms.BooleanField(label="Ausschnitt über den Bildrand hinaus erlauben", required=False)
     strokes = forms.JSONField(widget=forms.HiddenInput, required=False)
-    action = forms.ChoiceField(choices=[("single", "Variante"), ("compare", "Vergleich")])
+    action = forms.ChoiceField(
+        choices=[("single", "Variante"), ("compare", "Vergleich"), ("styles", "Stilvergleich")]
+    )
 
     def clean_strokes(self):
         strokes = self.cleaned_data["strokes"]
@@ -75,20 +93,38 @@ def editor(request, pk):
     mix = MixForm(data, initial={**DEFAULTS, **art.preparation})
     if data is not None and calc.is_valid() and mix.is_valid():
         values = mix.cleaned_data
-        compare = values["action"] == "compare"
-        group = uuid.uuid4() if compare else None
+        action = values["action"]
+        group = None if action == "single" else uuid.uuid4()
+        if action == "styles":
+            variants = [("custom", style) for style in STYLES]
+        else:
+            profiles = PROFILES if action == "compare" else ("custom",)
+            variants = [
+                (name, (values["style"] or "natural") if name == "custom" else "natural")
+                for name in profiles
+            ]
         source = art.source
         with transaction.atomic():
-            for name in PROFILES if compare else ("custom",):
+            for name, style in variants:
                 _, active = PROFILES[name]
                 prep = {k: values[k] if k in active else 0 for k in DEFAULTS}
                 if "background" in active:
                     prep["background_color"] = values["background_color"] or "white"
-                prep.update(profile=name, strokes=values["strokes"], pad=values["pad"])
+                prep.update(
+                    style=style,
+                    profile="styles" if action == "styles" else name,
+                    strokes=values["strokes"],
+                    pad=values["pad"],
+                )
                 variant = Artwork.objects.create(
                     **calc.cleaned_data, previous=art, source=source, preparation=prep, comparison=group
                 )
-        return redirect("comparison", group=group) if compare else redirect("simulation", pk=variant.pk)
+        return redirect("comparison", group=group) if group else redirect("simulation", pk=variant.pk)
+    with Image.open(BytesIO(analysis.photo)) as photo:
+        samples = style_samples(photo)
+        if photo.mode != "RGBA":
+            del samples["natural"]
+        styles = {key: base64.b64encode(encoded(gray, "PNG")).decode() for key, gray in samples.items()}
     return render(
         request,
         "studio/motif.html",
@@ -98,6 +134,8 @@ def editor(request, pk):
             "mix": mix,
             "sliders": [mix[k] for k in DEFAULTS],
             "config": {
+                "styles": styles,
+                "gradient": GRADIENT,
                 "photo": base64.b64encode(analysis.photo).decode(),
                 "masks": base64.b64encode(analysis.masks).decode(),
                 "framing": framing(analysis),
@@ -118,7 +156,8 @@ def comparison(request, group):
     if not variants:
         raise Http404
     for art in variants:
-        art.label = PROFILES[art.preparation["profile"]][0]
+        profile = art.preparation["profile"]
+        art.label = STYLES[art.preparation["style"]] if profile == "styles" else PROFILES[profile][0]
     return render(
         request,
         "studio/comparison.html",

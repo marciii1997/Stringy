@@ -186,12 +186,21 @@ gelegt. Bei Motiven ohne erkanntes Gesicht dient die Vordergrundmaske als Vorsch
 
 Prüfe die Masken im jeweiligen Pinselwerkzeug. Ergänze fehlende Motivteile, markiere wichtige
 Details oder nimm Flächen wieder aus der Auswahl. Die Regler steuern Hintergrund, Kleidung,
-Fokus, helle Stellen im Fokus und Konturen. Unter **Hintergrundfarbe** wählst du Weiß oder Schwarz. Die **Hintergrundstärke**
+Fokus, helle Stellen im Fokus und Konturen. Unter **Hintergrundfarbe** wählst du Weiß, Schwarz oder einen radialen **grauen Verlauf** mit heller Mitte und dunklerem Rand. Die **Hintergrundstärke**
 blendet den erkannten Hintergrund und den ergänzten Bildrand stufenlos in die gewählte Farbe.
 Bei 0 % bleiben die ursprünglichen Tonwerte erhalten, bei 100 % erhält der vollständig als
 Hintergrund markierte Bereich die gewählte Farbe. Mit **Motiv erhalten** kannst du beispielsweise
 helle Schnurrhaare aussparen. Die Graustufenvorschau zeigt den Zuschnitt und die Tonwerte. Fokus und Konturen wirken bei der Wahl der tatsächlichen Fäden. Optimierer 3 bewertet
 dafür mit feinem und grobem Sobel-Filter erkannte Konturen und gerichtete Helligkeitsunterschiede über einen und vier Rasterpixel.
+
+Mit **Motiv freistellen** wird die Hintergrundstärke auf 100 % gesetzt. Die weiche Motivmaske
+bestimmt den Übergang zum neuen Hintergrund. Bei bereits freigestellten PNG- oder WebP-Dateien
+übernimmt der Editor die vorhandene Transparenz als Ausgangsmaske.
+
+Unter **Bildstil** erhält **Natürlich** die Fototöne. **Sanft vereinfacht** glättet kleine
+Helligkeitsschwankungen innerhalb von Flächen und schont stärkere Kanten. **Plakat** reduziert
+das geglättete Motiv auf sechs Graustufen. **Drei Bildstile vergleichen** berechnet mit demselben
+Hintergrund, derselben Maske und denselben physischen Einstellungen drei separate Fadenpfade.
 
 **Eigene Variante berechnen** erzeugt einen neuen Fadenpfad. **Sechs Varianten vergleichen**
 stellt Original, Fokus mit Lichterschutz, Hintergrund, Konturen, Hintergrund mit Konturen und

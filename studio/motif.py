@@ -11,6 +11,10 @@ from .models import Artwork, MotifAnalysis
 
 cv2.setNumThreads(1)
 DEFAULTS = {"background": 65, "clothing": 30, "focus": 65, "highlights": 50, "edges": 55}
+STYLES = {"natural": "Natürlich", "smooth": "Sanft vereinfacht", "poster": "Plakat · 6 Graustufen"}
+BACKGROUNDS = {"white": "Weiß", "black": "Schwarz", "gradient": "Grauer Verlauf"}
+# Darkness at the centre and rim of the finished canvas.
+GRADIENT = (0.12, 0.52)
 PROFILES = {
     "baseline": ("Original", ()),
     "focus": ("Fokus und Lichter", ("focus", "highlights")),
@@ -56,6 +60,8 @@ def analyze(source):
         photo = ImageOps.exif_transpose(raw).convert("RGBA")
     dimensions = photo.size
     photo.thumbnail((640, 640), Image.Resampling.LANCZOS)
+    alpha = photo.getchannel("A")
+    cutout = photo if alpha.getextrema()[0] < 255 else None
     white = Image.new("RGB", photo.size, "white")
     white.paste(photo, mask=photo.getchannel("A"))
     photo = white
@@ -116,7 +122,7 @@ def analyze(source):
         if f["kind"] == "person":
             portrait_focus(gray, focus, (x - fw // 2, y - fh // 2, fw, fh))
             cv2.ellipse(clothing, (x, y + 2 * fh), (int(fw * 1.5), int(fh * 1.3)), 0, 0, 360, 255, -1)
-    if min(w, h) >= 12:
+    if cutout is None and min(w, h) >= 12:
         subject[[0, -1], :] = subject[:, [0, -1]] = cv2.GC_BGD
         bg, fg = np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64)
         try:
@@ -131,8 +137,11 @@ def analyze(source):
             for m, r in [(soft, 1.6), (focus, 4), (clothing, 5)]
         ),
     )
+    if cutout is not None:
+        masks = Image.merge("RGB", (alpha, masks.getchannel("G"), masks.getchannel("B")))
     return {
-        "photo": encoded(photo, "PNG"),
+        "version": 2,
+        "photo": encoded(cutout if cutout is not None else photo, "PNG"),
         "masks": encoded(masks, "PNG"),
         "faces": faces,
         "dimensions": dimensions,
@@ -145,6 +154,14 @@ def analysis_for(art):
         root = Artwork.objects.only("previous_id").get(pk=root.previous_id)
     cached = MotifAnalysis.objects.filter(original=root).first()
     if cached:
+        if cached.version < 2:
+            source = root.source
+            with Image.open(BytesIO(source)) as original:
+                has_alpha = original.has_transparency_data
+            # Opaque photos already have the right masks; keep their saved segmentation.
+            updated = analyze(source) if has_alpha else {"version": 2}
+            MotifAnalysis.objects.filter(pk=cached.pk, version=cached.version).update(**updated)
+            cached.refresh_from_db()
         return cached
     return MotifAnalysis.objects.get_or_create(original=root, defaults=analyze(root.source))[0]
 
@@ -197,6 +214,26 @@ def edited_masks(analysis, strokes):
     return masks
 
 
+def style_samples(photo):
+    """Full-frame luminance maps shared by the editor and the worker before cropping."""
+    luminance = photo.convert("RGB").convert("L", (0.2126, 0.7152, 0.0722, 0))
+    if photo.mode == "RGBA":
+        empty = photo.getchannel("A").point(lambda a: 255 if a == 0 else 0)
+        luminance.paste(255, mask=empty)
+    gray = np.asarray(luminance)
+    smooth = cv2.bilateralFilter(gray, 9, 40, 5)
+    steps = np.rint(smooth.astype(np.float32) / 51).astype(np.uint8) * 51
+    return {"natural": luminance, "smooth": Image.fromarray(smooth), "poster": Image.fromarray(steps)}
+
+
+def background_darkness(color, size):
+    if color == "gradient":
+        axis = (np.arange(size, dtype=np.float32) + 0.5) * (2 / size) - 1
+        radius = np.minimum(1, np.hypot(axis[:, None], axis))
+        return GRADIENT[0] + (GRADIENT[1] - GRADIENT[0]) * radius
+    return float(color == "black")
+
+
 def guide_for(art, analysis, size=512):
     params = art.preparation
     subject, focus, clothing = edited_masks(analysis, params.get("strokes", []))
@@ -230,14 +267,27 @@ def guide_for(art, analysis, size=512):
         return values
 
     subject, focus, clothing = map(raster, (subject, focus, clothing))
-    light = raster(Image.open(BytesIO(analysis.photo)).convert("L"), fill=1) ** art.gamma
-    bg = params["background"] / 100 * (1 - subject)
+    photo = Image.open(BytesIO(analysis.photo))
+    transparent = photo.mode == "RGBA"
+    flat = Image.alpha_composite(Image.new("RGBA", photo.size, "white"), photo) if transparent else photo
+    light = raster(flat.convert("L"), fill=1) ** art.gamma
+    color = params.get("background_color", "white")
+    strength = params["background"] / 100
+    bg = strength * (1 - subject)
     cloth = params["clothing"] / 100 * clothing * subject
+    style = params.get("style", "natural")
     fade = 1 - (1 - bg) * (1 - cloth)
-    # D' = D * (1 - fade) + ink, with clothing lightened after the background blend.
     ink = None
-    if params.get("background_color") == "black" and params["background"]:
-        ink = bg * (1 - cloth)
+    if color != "white" and strength:
+        ink = bg * background_darkness(color, size) * (1 - cloth)
+    if style != "natural" or (transparent and strength):
+        # Use the un-matted foreground at cutout edges. The remaining share keeps
+        # the original photo, including its full-resolution detail in natural mode.
+        weight = subject if style != "natural" else subject * strength
+        styled = raster(style_samples(photo)[style], fill=1) ** art.gamma
+        fade = 1 - (1 - bg - weight) * (1 - cloth)
+        foreground_ink = weight * (1 - styled) * (1 - cloth)
+        ink = foreground_ink if ink is None else ink + foreground_ink
     priority = focus * params["focus"] / 100
     # A bright patch within a marked face (teeth, eye reflections) costs more to cross.
     priority += focus * params["highlights"] / 100 * np.clip((light - 0.65) / 0.3, 0, 1)

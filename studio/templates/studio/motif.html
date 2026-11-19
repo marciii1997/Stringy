@@ -24,7 +24,10 @@
 <section>
 <h2>Graustufenvorlage</h2>
 <canvas id="tone" width="256" height="256" aria-label="Kreisförmige Vorschau der Tonwerte"></canvas>
+{{ mix.style.as_field_group }}
 {{ mix.background_color.as_field_group }}
+<button type="button" id="cutout">Motiv freistellen</button>
+<p>Für feine Ränder an Haaren und Fell kannst du die Auswahl mit „Motiv erhalten“ und „Als Hintergrund markieren“ korrigieren.</p>
 {% for field in sliders %}<label class="slider">{{ field.label }} {{ field }} <output for="{{ field.id_for_label }}"></output></label>{% endfor %}
 <p>Der Fokus erhöht das Gewicht markierter Details im Fadenpfad. Die berechnete Simulation zeigt, welche Konturen der Faden tatsächlich trifft.</p>
 </section>
@@ -33,6 +36,7 @@
 {% for field in calc %}{% if field.name != "zoom" and field.name != "center_x" and field.name != "center_y" %}<p>{{ field.as_field_group }}</p>{% endif %}{% endfor %}
 </details>
 <div class="actions"><button name="action" value="single">Eigene Variante berechnen</button>
+<button name="action" value="styles">Drei Bildstile vergleichen</button>
 <button name="action" value="compare">Sechs Varianten vergleichen</button></div>
 </form>
 {{ config|json_script:"motif-config" }}

@@ -30,6 +30,14 @@
   const ctx = brush.getContext("2d"),
     base = buffer(),
     processed = buffer();
+  const samples = {};
+  await Promise.all(Object.entries(cfg.styles).map(async ([name, bytes]) => {
+    const layer = buffer();
+    layer.drawImage(await load(bytes), 0, 0);
+    samples[name] = layer.getImageData(0, 0, w, h).data;
+  }));
+  base.fillStyle = "white";
+  base.fillRect(0, 0, w, h);
   base.drawImage(photo, 0, 0);
   const colors = base.getImageData(0, 0, w, h).data;
   base.drawImage(mask, 0, 0);
@@ -114,7 +122,11 @@
     const bg = num("background") / 100,
       cloth = num("clothing") / 100,
       gamma = num("gamma");
-    const black = form.elements.background_color.value === "black";
+    const color = form.elements.background_color.value;
+    const style = form.elements.style.value;
+    const styled = samples[style];
+    const [x, y, sw, sh] = frame();
+    const [center, rim] = cfg.gradient;
     const layer = Math.floor(layers.indexOf(tool.value) / 2);
     const tint = [
       [20, 182, 114],
@@ -127,8 +139,17 @@
         (0.2126 * colors[i] + 0.7152 * colors[i + 1] + 0.0722 * colors[i + 2]) /
         255;
       const blend = bg * (1 - subject);
+      let backdrop = color === "black" ? 1 : 0;
+      if (color === "gradient") {
+        const index = i / 4;
+        const dx = 2 * (index % w + 0.5 - x) / sw - 1;
+        const dy = 2 * (Math.floor(index / w) + 0.5 - y) / sh - 1;
+        backdrop = center + (rim - center) * Math.min(1, Math.hypot(dx, dy));
+      }
+      const weight = styled ? subject * (style === "natural" ? bg : 1) : 0;
+      const styledInk = styled ? weight * (1 - (styled[i] / 255) ** gamma) : 0;
       const dark =
-        ((1 - lum ** gamma) * (1 - blend) + (black ? blend : 0)) *
+        ((1 - lum ** gamma) * (1 - blend - weight) + styledInk + backdrop * blend) *
         (1 - (cloth * subject * maps[2][i]) / 255);
       tone.data[i] = tone.data[i + 1] = tone.data[i + 2] = 255 * (1 - dark);
       tone.data[i + 3] = overlay.data[i + 3] = 255;
@@ -140,7 +161,6 @@
     }
     ctx.putImageData(overlay, 0, 0);
     processed.putImageData(tone, 0, 0);
-    const [x, y, sw, sh] = frame();
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
     ctx.ellipse(x + sw / 2, y + sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
@@ -157,8 +177,18 @@
     v.beginPath();
     v.arc(128, 128, 128, 0, Math.PI * 2);
     v.clip();
-    const padding = Math.round(255 * (black ? 1 - bg : 1));
-    v.fillStyle = `rgb(${padding}, ${padding}, ${padding})`;
+    const paddingColor = darkness => {
+      const value = Math.round(255 * (1 - bg * darkness));
+      return `rgb(${value}, ${value}, ${value})`;
+    };
+    if (color === "gradient") {
+      const gradient = v.createRadialGradient(128, 128, 0, 128, 128, 128);
+      gradient.addColorStop(0, paddingColor(center));
+      gradient.addColorStop(1, paddingColor(rim));
+      v.fillStyle = gradient;
+    } else {
+      v.fillStyle = paddingColor(color === "black" ? 1 : 0);
+    }
     v.fillRect(0, 0, 256, 256);
     v.drawImage(processed.canvas, x, y, sw, sh, 0, 0, 256, 256);
     v.restore();
@@ -250,6 +280,10 @@
     form.elements.pad.checked = true;
     for (const [k, v] of Object.entries(cfg.framing))
       form.elements[k].value = v;
+    schedule();
+  };
+  byId("cutout").onclick = () => {
+    form.elements.background.value = 100;
     schedule();
   };
   form.oninput = schedule;

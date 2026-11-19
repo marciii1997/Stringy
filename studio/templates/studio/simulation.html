@@ -5,7 +5,8 @@
   {% if perms.studio.add_artwork %}<p><a href="{% url 'motif' art.pk %}">Motiv bearbeiten und Varianten vergleichen</a></p>{% endif %}
   {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}
   <p>Berechnung #{{ art.pk }} · Optimierer {{ art.route.optimizer_version|default:"1" }}</p>
-  {% if art.preparation.background %}<p>Hintergrundfarbe {% if art.preparation.background_color == "black" %}Schwarz{% else %}Weiß{% endif %} · {{ art.preparation.background }} %</p>{% endif %}
+  {% if art.preparation.style == "smooth" %}<p>Bildstil · Sanft vereinfacht</p>{% elif art.preparation.style == "poster" %}<p>Bildstil · Plakat mit sechs Graustufen</p>{% endif %}
+  {% if art.preparation.background %}<p>Hintergrundfarbe {% if art.preparation.background_color == "black" %}Schwarz{% elif art.preparation.background_color == "gradient" %}Grauer Verlauf{% else %}Weiß{% endif %} · {{ art.preparation.background }} %</p>{% endif %}
   <p>{{ art.count }} Verbindungen · {{ art.anchors }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden</p>
   <p>{% if art.route.stop_reason == "segment_limit" %}Das Verbindungslimit ist erreicht.{% elif art.route.stop_reason == "no_improving_move" %}Die Suche hat keinen weiteren vorteilhaften Fadenzug gefunden.{% endif %}</p>
   {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}

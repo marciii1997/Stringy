@@ -7,6 +7,7 @@ from django.utils import timezone
 
 
 class MotifAnalysis(models.Model):
+    version = models.PositiveSmallIntegerField(default=2)
     original = models.OneToOneField("Artwork", on_delete=models.CASCADE)
     photo = models.BinaryField()
     masks = models.BinaryField()

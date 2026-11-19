@@ -61,7 +61,10 @@ def process_one():
             ]
             if art.preparation.get("pad"):
                 command.append("--pad-crop")
-            if any(art.preparation.get(key) for key in DEFAULTS):
+            if (
+                any(art.preparation.get(key) for key in DEFAULTS)
+                or art.preparation.get("style", "natural") != "natural"
+            ):
                 guide = folder / "guide.png"
                 weights, ink = guide_for(art, analysis_for(art))
                 weights.save(guide)

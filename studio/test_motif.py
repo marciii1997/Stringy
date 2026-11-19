@@ -123,3 +123,74 @@ class MotifTests(TestCase):
         self.assertGreater(guide.getchannel("B").getextrema()[1], 20)
         self.assertEqual(guide.getpixel((99, 99))[1], 0)
         self.assertEqual(Image.open(BytesIO(self.analysis.masks)).getbbox(), None)
+
+    def test_style_comparison_only_changes_the_foreground_style(self):
+        self.client.force_login(self.admin)
+        strokes = [{"layer": "subject", "radius": 0.1, "points": [[0.5, 0.5]]}]
+        data = {
+            **self.data(),
+            "action": "styles",
+            "style": "poster",
+            "background": 100,
+            "background_color": "gradient",
+            "strokes": json.dumps(strokes),
+        }
+        response = self.client.post(reverse("motif", args=[self.art.pk]), data)
+        variants = list(Artwork.objects.filter(previous=self.art).order_by("pk"))
+        self.assertEqual([v.preparation["style"] for v in variants], ["natural", "smooth", "poster"])
+        for variant in variants:
+            self.assertEqual(variant.preparation["strokes"], strokes)
+            self.assertEqual(variant.preparation["background_color"], "gradient")
+            self.assertEqual(variant.preparation["background"], 100)
+            self.assertEqual(variant.preparation["profile"], "styles")
+        self.assertContains(self.client.get(response.url), "Sanft vereinfacht")
+        form = self.client.get(reverse("motif", args=[variants[-1].pk])).context["mix"]
+        self.assertEqual(form["style"].value(), "poster")
+        self.assertEqual(form["background_color"].value(), "gradient")
+
+    def test_transparent_subject_composites_over_canvas_aligned_gradient(self):
+        # Left transparent, middle half opaque, right opaque. Source luminance = 102.
+        photo = Image.new("RGBA", (100, 100), (102, 102, 102, 255))
+        alpha = Image.new("L", photo.size, 255)
+        alpha.paste(0, (0, 0, 35, 100))
+        alpha.paste(128, (35, 0, 65, 100))
+        photo.putalpha(alpha)
+        root = Artwork.objects.create(title="Freigestellt", source=encoded(photo, "PNG"))
+        # Upgrade a pre-existing cached analysis, including its old segmentation.
+        stale = MotifAnalysis.objects.create(
+            original=root,
+            version=1,
+            dimensions=[100, 100],
+            faces=[],
+            masks=self.analysis.masks,
+            photo=self.analysis.photo,
+        )
+        analysis = analysis_for(root)
+        self.assertEqual(analysis.pk, stale.pk)
+        self.assertEqual(analysis.version, 2)
+        self.assertEqual(Image.open(BytesIO(analysis.masks)).getchannel("R").tobytes(), alpha.tobytes())
+        root.preparation = {
+            **DEFAULTS,
+            "background": 100,
+            "background_color": "gradient",
+            "style": "natural",
+        }
+        guide, ink = guide_for(root, analysis, 100)
+        self.assertEqual(guide.getchannel("R").getextrema(), (255, 255))
+        self.assertAlmostEqual(ink.getpixel((0, 50)), 132, delta=2)
+        self.assertAlmostEqual(ink.getpixel((49, 50)), (0.12 + 0.6) * 0.5 * 255, delta=2)
+        self.assertEqual(ink.getpixel((80, 50)), 153)
+        root.zoom = 0.5
+        _, padded = guide_for(root, analysis, 100)
+        self.assertEqual(ink.getpixel((0, 50)), padded.getpixel((0, 50)))
+
+    def test_style_alone_changes_only_pixels_in_the_subject_mask(self):
+        self.art.preparation = {k: 0 for k in DEFAULTS}
+        self.art.preparation.update(
+            style="poster", strokes=[{"layer": "subject", "radius": 0.15, "points": [[0.5, 0.5]]}]
+        )
+        guide, ink = guide_for(self.art, self.analysis, 100)
+        self.assertEqual(guide.getpixel((50, 50))[0], 255)
+        self.assertEqual(ink.getpixel((50, 50)), 102)
+        self.assertEqual(guide.getpixel((5, 5))[0], 0)
+        self.assertEqual(ink.getpixel((5, 5)), 0)

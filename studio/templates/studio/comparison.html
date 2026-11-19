@@ -3,7 +3,7 @@
 {% block content %}
 {% if first.previous_id %}<a href="{% url 'simulation' first.previous_id %}">← {{ first.title }}</a>{% endif %}
 <h1>Variantenvergleich</h1>
-<p>Alle sechs Fadenpfade verwenden denselben Ausschnitt, Faden und Ankerkreis. Öffne eine Simulation für die Detailansicht.</p>
+<p>Alle Fadenpfade verwenden denselben Ausschnitt, Faden und Ankerkreis. Öffne eine Simulation für die Detailansicht.</p>
 <div class="motif-results">
 {% for art in variants %}
 <section><h2>{{ art.label }}</h2>
