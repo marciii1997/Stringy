@@ -5,6 +5,9 @@
           aria-label="Fadensimulation des gewählten Fortschritts">
   </canvas>
   <label><input type="checkbox" data-nails {% if playback.positions %}checked{% endif %}> Nägel anzeigen</label>
+  {% if art and playback.firstExtra %}
+    <label><input type="checkbox" data-plan-target="{% url 'asset' art.pk 'target' %}"> Nagelplan auf der Motivvorlage ansehen</label>
+  {% endif %}
   <div class="controls">
     <button type="button" data-back aria-label="Eine Verbindung zurück">−</button>
     <input aria-label="Simulationsfortschritt" type="range" min="0" value="0">

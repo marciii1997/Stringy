@@ -1,9 +1,21 @@
 const player = document.querySelector(".player");
-const {path, anchors, positions, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, positions, firstExtra, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
 const slider = player.querySelector("input[type=range]");
 const showNails = player.querySelector("[data-nails]");
+const planToggle = player.querySelector("[data-plan-target]");
+const target = new Image();
+if (planToggle) {
+    planToggle.addEventListener("change", () => {
+        if (planToggle.checked) {
+            showNails.checked = true;
+            if (!target.src) target.src = planToggle.dataset.planTarget;
+        }
+        draw();
+    });
+    target.addEventListener("load", draw);
+}
 const output = player.querySelector("output");
 const back = player.querySelector("[data-back]");
 const next = player.querySelector("[data-next]");
@@ -30,10 +42,12 @@ function draw() {
     ctx.strokeStyle = "#c3bdb1";
     ctx.lineWidth = 1;
     ctx.stroke();
+    const plan = planToggle?.checked && target.naturalWidth > 0;
+    if (plan) ctx.drawImage(target, size / 2 - radius, size / 2 - radius, radius * 2, radius * 2);
     ctx.lineWidth = width * radius * 2;
     ctx.globalAlpha = opacity ?? 1;
     ctx.strokeStyle = "#000";
-    for (let i = 1; i <= start + step; i++) {
+    for (let i = 1; !plan && i <= start + step; i++) {
         ctx.beginPath();
         ctx.moveTo(...points[path[i - 1]]);
         ctx.lineTo(...points[path[i]]);
@@ -41,17 +55,18 @@ function draw() {
     }
     if (showNails.checked) {
         ctx.globalAlpha = 1;
-        const current = path[start + step];
+        const current = plan ? -1 : path[start + step];
         points.forEach((p, id) => {
             if (!p) return;
             const [x,y] = p;
             ctx.beginPath();
-            ctx.arc(x, y, id === current ? 6 : 3, 0, 2*Math.PI);
-            ctx.fillStyle = id === current ? "#a33153" : "#146664";
+            const added = firstExtra != null && id >= firstExtra;
+            ctx.arc(x, y, id === current || added ? 6 : 3, 0, 2*Math.PI);
+            ctx.fillStyle = id === current ? "#a33153" : added ? "#bd5b08" : "#146664";
             ctx.strokeStyle = "white";
             ctx.lineWidth = 1.3;
             ctx.fill(); ctx.stroke();
-            if (id === current || anchors <= 45) {
+            if (id === current || added || anchors <= 45) {
                 ctx.font = "bold 14px system-ui";
                 ctx.textAlign = x > size/2 ? "right" : "left";
                 const dx = x > size/2 ? -7 : 7;

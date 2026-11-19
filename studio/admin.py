@@ -46,6 +46,9 @@ class ArtworkAdmin(admin.ModelAdmin):
         )
         self.message_user(request, f"{count} Motive zur Berechnung eingereiht.")
 
+    def get_changeform_initial_data(self, request):
+        return {"auto_nails": 24, **super().get_changeform_initial_data(request)}
+
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
             kwargs["form"] = ArtworkForm
@@ -58,6 +61,7 @@ class ArtworkAdmin(admin.ModelAdmin):
                 "state",
                 "count",
                 "anchors",
+                "auto_nails",
                 "diameter",
                 "thread",
                 "budget",

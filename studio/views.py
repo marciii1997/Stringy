@@ -121,10 +121,13 @@ def private_artwork(view):
 
 
 def playback_layout(art, released=None):
-    layout = {"anchors": art.anchors}
-    if art.nail_positions:
-        ids = range(art.anchors) if released is None else sorted(set(released))
-        layout["positions"] = {i: art.nail_positions[i] for i in ids}
+    positions = art.winding_positions
+    layout = {"anchors": len(positions) or art.anchors}
+    if positions:
+        ids = range(len(positions)) if released is None else sorted(set(released))
+        layout["positions"] = {i: positions[i] for i in ids}
+    if len(positions) > art.anchors:
+        layout["firstExtra"] = art.anchors
     return layout
 
 
@@ -181,8 +184,8 @@ def laser(request, pk):
     form = LaserForm(
         request.POST if request.method == "POST" else None,
         diameter=art.diameter,
-        count=art.anchors,
-        free_anchors=art.route.get("anchors") if art.nail_positions else None,
+        count=art.winding_anchor_count,
+        free_anchors=art.route.get("anchors") if art.winding_positions else None,
     )
     if form.is_valid():
         response = HttpResponse(laser_svg(art.route, **form.cleaned_data), content_type="image/svg+xml")

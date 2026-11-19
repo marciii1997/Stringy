@@ -1,6 +1,6 @@
 <div class="nail-editor">
   <input type="hidden" name="{{ widget.name }}" value="{{ widget.value|default_if_none:'' }}"{% include "django/forms/widgets/attrs.html" %}>
-  <select name="nail_mode" aria-label="Nagelanordnung">
+  <select name="nail_mode" aria-label="Grundplan für die Nägel">
     <option value="ring">Gleichmäßiger Randkreis</option>
     <option value="free">Nägel frei platzieren</option>
   </select>

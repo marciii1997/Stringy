@@ -36,8 +36,9 @@
 <h2>Nagelplan</h2>
 {{ calc.anchors.as_field_group }}
 {{ calc.nail_positions.as_field_group }}
+<p>{{ calc.auto_nails.as_field_group }}</p>
 <details><summary>Faden und Rechenparameter</summary>
-{% for field in calc %}{% if field.name != "anchors" and field.name != "nail_positions" and field.name != "zoom" and field.name != "center_x" and field.name != "center_y" %}<p>{{ field.as_field_group }}</p>{% endif %}{% endfor %}
+{% for field in calc %}{% if field.name != "anchors" and field.name != "auto_nails" and field.name != "nail_positions" and field.name != "zoom" and field.name != "center_x" and field.name != "center_y" %}<p>{{ field.as_field_group }}</p>{% endif %}{% endfor %}
 </details>
 <div class="actions"><button name="action" value="single">Eigene Variante berechnen</button>
 <button name="action" value="threads">0,15 und 0,25 mm vergleichen</button>

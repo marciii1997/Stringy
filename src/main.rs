@@ -38,6 +38,9 @@ struct Args {
     /// JSON array of [x,y] nail positions relative to the radius, centered, positive y down.
     #[arg(long, conflicts_with_all = ["anchors", "min_anchor_gap", "replay"])]
     nail_positions: Option<PathBuf>,
+    /// Number of leading original ring nails whose circular skip rule is retained.
+    #[arg(long, requires = "nail_positions")]
+    base_ring: Option<usize>,
     /// Number of equally spaced anchors.
     #[arg(long, default_value_t = Settings::default().anchors)]
     anchors: usize,
@@ -129,8 +132,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .min((args.anchors / 4).max(1))
             })
         } else {
-            1
+            args.base_ring.map_or(1, |n| {
+                Settings::default().min_anchor_gap.min((n / 4).max(1))
+            })
         },
+        base_ring: args.base_ring.unwrap_or(0),
         nail_positions,
         diameter_mm: args.diameter_mm,
         thread_mm: args.thread_mm,

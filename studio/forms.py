@@ -20,6 +20,9 @@ class CalculationForm(forms.ModelForm):
         if self.is_bound and self.data.get("nail_mode") in ("ring", "free"):
             self.fields["nail_positions"].widget.attrs["data-nail-mode"] = self.data["nail_mode"]
 
+    def clean_auto_nails(self):
+        return self.cleaned_data["auto_nails"] or 0
+
     def clean_nail_positions(self):
         points = self.cleaned_data["nail_positions"]
         if self.data.get("nail_mode") == "ring" or (
@@ -46,6 +49,10 @@ class CalculationForm(forms.ModelForm):
             data["anchors"] = len(data["nail_positions"])
         elif "nail_positions" in data and data.get("anchors", 24) < 24:
             self.add_error("anchors", "Für den Randkreis sind mindestens 24 Nägel erforderlich.")
+        if data.get("anchors", 0) + data.get("auto_nails", 0) > 720:
+            self.add_error(
+                "auto_nails", "Grundnägel und Zusatznägel dürfen zusammen höchstens 720 ergeben."
+            )
         return data
 
     class Meta:
@@ -54,6 +61,7 @@ class CalculationForm(forms.ModelForm):
             "title",
             "anchors",
             "nail_positions",
+            "auto_nails",
             "diameter",
             "thread",
             "budget",
@@ -67,7 +75,11 @@ class CalculationForm(forms.ModelForm):
             "gamma",
         )
         widgets: ClassVar = {"nail_positions": NailWidget}
-        labels: ClassVar = {"diameter": "Ankerkreisdurchmesser (mm)"}
+        labels: ClassVar = {
+            "diameter": "Ankerkreisdurchmesser (mm)",
+            "nail_positions": "Grundplan für die Nägel",
+            "anchors": "Anzahl Grundnägel",
+        }
         help_texts: ClassVar = {
             "diameter": "Für ein Werkstück mit Ø 600 mm und 5 mm Rand den Ankerkreis auf 590 mm setzen.",
             "quality_search": "Berechnet zwei Pfade bei 512 und 1024 Pixeln und wählt anhand der Fadensimulation. Für einen schnellen Entwurf ausschalten.",

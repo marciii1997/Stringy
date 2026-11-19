@@ -3,7 +3,7 @@
 {% block content %}
   <a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
   <h1>Canvas für den Laser</h1>
-  {% if art.nail_positions %}<p>{{ art.anchors }} frei platzierte Nägel auf einer Leinwand mit Ø {{ art.diameter|floatformat:"-2" }} mm. Die Nummern entsprechen dem Nagelplan im Editor.</p>
+  {% if art.winding_positions %}<p>{{ art.winding_anchor_count }} Nägel gemäß berechnetem Nagelplan auf einer Leinwand mit Ø {{ art.diameter|floatformat:"-2" }} mm. Die Nummern entsprechen dem Fadenverlauf der Simulation.</p>
   {% else %}<p>{{ art.anchors }} Anker auf einem Kreis mit Ø {{ art.diameter|floatformat:"-2" }} mm.
      Anker 0 liegt oben, die Nummern laufen im Uhrzeigersinn.</p>{% endif %}
   <form method="post" class="laser-form">

@@ -259,6 +259,28 @@ docker compose up -d --no-build --force-recreate
 Compose führt die Datenbankmigration automatisch aus. Das benannte Datenvolume enthält die Motive
 und Kalender. Die lokale Oberfläche ist unter http://localhost:8000 erreichbar.
 
+### Innen-Nägel automatisch bestimmen
+
+Unter **Zusatznägel automatisch platzieren (max.)** gibst du ein Budget für zusätzliche
+Nagelpositionen an. Beim neuen Upload sind 24 vorgeschlagen. Mit 0 schaltest du den
+Vergleich aus. Randkreis oder eigener Grundplan bleiben die Basis. Die Gesamtgrenze
+liegt bei 720 Nägeln, höchstens 96 davon werden automatisch ergänzt.
+
+Der Worker berechnet erst den Grundpfad. Er vergleicht dessen simulierte Helligkeit
+mit der zugeschnittenen und bearbeiteten Vorlage. Er sucht räumlich getrennte Punkte
+an fehlenden dunklen Details und schlecht getroffenen Konturen und berücksichtigt
+markierte Fokusbereiche. Mit diesen Innenpunkten rechnet er den gesamten Pfad erneut,
+bei gleichem Faden, Ausschnitt, Verbindungsbudget und gewähltem Raster.
+Bei einem Randkreis gilt zwischen seinen ursprünglichen Nägeln weiterhin der
+Mindestabstand in Nagelschritten.
+
+Die App übernimmt den Zusatzplan nur bei einem höheren Wert für SSIM minus
+Tonwertfehler. Sie entfernt unbenutzte Zusatznägel. Im Fadenverlauf erscheinen
+übernommene Innenpunkte orange mit ihren Nummern. **Nagelplan auf der Motivvorlage
+ansehen** legt die Positionen über das Motiv. Dieselben IDs und Koordinaten gelten
+in Zahlenfolge und Laser-SVG. Beim Neuberechnen sucht die App vom ursprünglichen
+Grundplan aus neu. Vorhandene Kalender behalten ihren bisherigen Pfad.
+
 ### Freier Nagelplan
 
 Beim Foto-Upload, im Motiv-Editor oder unter **Parameter ändern und neu berechnen**

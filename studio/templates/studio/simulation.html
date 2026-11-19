@@ -7,13 +7,23 @@
   <p>Berechnung #{{ art.pk }} · Optimierer {{ art.route.optimizer_version|default:"1" }}</p>
   {% if art.preparation.style == "smooth" %}<p>Bildstil · Sanft vereinfacht</p>{% elif art.preparation.style == "poster" %}<p>Bildstil · Plakat mit sechs Graustufen</p>{% endif %}
   {% if art.preparation.background %}<p>Hintergrundfarbe {% if art.preparation.background_color == "black" %}Schwarz{% elif art.preparation.background_color == "gradient" %}Grauer Verlauf{% else %}Weiß{% endif %} · {{ art.preparation.background }} %</p>{% endif %}
-  <p>{{ art.count }} Verbindungen · {{ art.anchors }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden · Ø {{ art.thread }} mm</p>
+  <p>{{ art.count }} Verbindungen · {{ art.winding_anchor_count }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden · Ø {{ art.thread }} mm</p>
   <p>{% if art.route.stop_reason == "segment_limit" %}Das Verbindungslimit ist erreicht.{% elif art.route.stop_reason == "no_improving_move" %}Die Suche hat keinen weiteren vorteilhaften Fadenzug gefunden.{% endif %}</p>
+  {% if art.route.auto_nails %}
+    <h2>Automatische Zusatznägel</h2>
+    {% with search=art.route.auto_nails %}
+      {% if search.added %}<p>{{ art.anchors }} Grundnägel und <strong>{{ search.added }} zusätzliche Innen-Nägel</strong>. Im Fadenverlauf sind die Zusatznägel orange markiert und ab {{ art.anchors }} nummeriert.</p>
+      {% elif search.status == "incomplete" %}<p>Die Zusatzsuche konnte nicht abgeschlossen werden. Angezeigt wird der fertige Grundpfad.</p>
+      {% elif search.status == "no_candidates" %}<p>Die Fehlersuche hat keine geeigneten zusätzlichen Positionen gefunden.</p>
+      {% else %}<p>Der getestete Zusatzplan brachte keinen höheren Vergleichswert. Der Grundplan wurde übernommen.</p>{% endif %}
+      {% if search.baseline %}<p>Strukturwert (SSIM) · Grundplan {{ search.baseline.ssim|floatformat:3 }} · gewählter Plan {{ art.route.view_quality.ssim|floatformat:3 }}</p>{% endif %}
+    {% endwith %}
+  {% endif %}
   {% if art.route.quality_trials %}
   <details><summary>Qualität der Fadensimulation</summary>
     <p>Gewähltes Rechenraster {{ art.route.settings.raster_size }} px. Ein höherer Strukturwert (SSIM) und ein kleinerer Tonwertfehler sprechen für eine größere Ähnlichkeit zur selben Vorlage.</p>
     {% if art.route.previous_quality %}<p>Vorheriger Pfad auf der aktuellen Vorlage · SSIM {{ art.route.previous_quality.ssim|floatformat:3 }} · Tonwertfehler {{ art.route.previous_quality.tone_rmse|floatformat:3 }}</p>{% endif %}
-    <ul>{% for trial in art.route.quality_trials %}<li>{{ trial.raster }} px · {% if trial.error %}Berechnung abgebrochen{% else %}SSIM {{ trial.ssim|floatformat:3 }} · Tonwertfehler {{ trial.tone_rmse|floatformat:3 }} · {{ trial.count }} Verbindungen{% endif %}</li>{% endfor %}</ul>
+    <ul>{% for trial in art.route.quality_trials %}<li>{{ trial.raster }} px · {% if trial.proposed %}{{ trial.proposed }} Zusatznägel geprüft · {% endif %}{% if trial.error %}Berechnung abgebrochen{% else %}SSIM {{ trial.ssim|floatformat:3 }} · Tonwertfehler {{ trial.tone_rmse|floatformat:3 }} · {{ trial.count }} Verbindungen{% endif %}</li>{% endfor %}</ul>
   </details>
   {% endif %}
   {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}

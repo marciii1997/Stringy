@@ -11,6 +11,7 @@ from django.db import close_old_connections
 from django.db.models import Q
 from django.utils import timezone
 
+from studio.auto_nails import keep_used_nails, suggest_positions
 from studio.models import Artwork
 from studio.motif import DEFAULTS, analysis_for, guide_for
 from studio.quality import view_quality
@@ -51,8 +52,37 @@ def process_one():
             winner = {}
             deadline = time.monotonic() + 1800
             priority = None
-            for size in (512, 1024) if art.quality_search else (512,):
-                command = optimizer_command(art, source, folder, size)
+            reference = None
+            nail_search = {"requested": art.auto_nails, "added": 0, "status": "incomplete"}
+            # First choose the best base path. The final trial uses its residual and raster.
+            rasters = [512, 1024] if art.quality_search else [512]
+            if art.auto_nails:
+                rasters.append(None)
+            for raster in rasters:
+                positions = None
+                size = raster
+                if raster is None:
+                    base = winner["route"]
+                    size = base["settings"]["raster_size"]
+                    nail_search["baseline"] = base["view_quality"]
+                    radius = art.diameter / 2
+                    existing = art.nail_positions or [
+                        [a["x_mm"] / radius, a["y_mm"] / radius] for a in base["anchors"]
+                    ]
+                    extra = suggest_positions(
+                        reference,
+                        winner["preview"],
+                        existing,
+                        min(art.auto_nails, 720 - len(existing)),
+                        art.diameter,
+                        priority,
+                    )
+                    nail_search["proposed"] = len(extra)
+                    if not extra:
+                        nail_search["status"] = "no_candidates"
+                        break
+                    positions = existing + extra
+                command = optimizer_command(art, source, folder, size, positions)
                 if analysis is not None:
                     weights, ink = guide_for(art, analysis, size)
                     guide = folder / "guide.png"
@@ -70,19 +100,40 @@ def process_one():
                 except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
                     if not winner:
                         raise
-                    results.append({"raster": size, "error": type(exc).__name__})
+                    results.append(
+                        {
+                            "raster": size,
+                            "proposed": nail_search.get("proposed", 0),
+                            "error": type(exc).__name__,
+                        }
+                    )
                     break
                 route = json.loads((folder / "path.json").read_bytes())
                 preview = (folder / "preview.png").read_bytes()
                 target = (folder / "target.png").read_bytes()
-                if size == 512:
+                if reference is None:
                     reference = target
                 quality = view_quality(reference, preview, priority)
                 count = len(route["path"]) - 1
-                score = (quality["ssim"] - quality["tone_rmse"], -count)
-                results.append({"raster": size, "count": count, **quality})
+                added = keep_used_nails(route, art.anchors) if positions else 0
+                score = (quality["ssim"] - quality["tone_rmse"], -added, -count)
+                results.append(
+                    {
+                        "raster": size,
+                        "count": count,
+                        "proposed": nail_search.get("proposed", 0),
+                        "used_extra": added,
+                        **quality,
+                    }
+                )
+                if positions:
+                    nail_search["status"] = "no_gain"
+                    if not added:
+                        continue
                 if best_score is None or score > best_score:
                     best_score = score
+                    if positions:
+                        nail_search.update(added=added, status="improved")
                     route["view_quality"] = quality
                     if art.preparation:
                         route["preparation"] = art.preparation
@@ -120,6 +171,8 @@ def process_one():
                     else:
                         image = (folder / "preview.png").read_bytes()
                         winner["route"]["previous_quality"] = view_quality(reference, image, priority)
+            if art.auto_nails:
+                winner["route"]["auto_nails"] = nail_search
             winner["route"]["quality_trials"] = results
             claim.update(state=Artwork.State.READY, **winner)
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
@@ -129,7 +182,7 @@ def process_one():
     return True
 
 
-def optimizer_command(art, source, folder, size):
+def optimizer_command(art, source, folder, size, positions=None):
     command = [
         settings.STRINGY_BIN,
         str(source),
@@ -160,10 +213,12 @@ def optimizer_command(art, source, folder, size):
         "--max-segments",
         str(art.budget),
     ]
-    if art.nail_positions:
+    if positions or art.nail_positions:
         layout = folder / "nails.json"
-        layout.write_text(json.dumps(art.nail_positions))
+        layout.write_text(json.dumps(positions or art.nail_positions))
         command.extend(["--nail-positions", str(layout)])
+        if positions and not art.nail_positions:
+            command.extend(["--base-ring", str(art.anchors)])
     else:
         command.extend(["--anchors", str(art.anchors)])
     if art.preparation.get("pad"):

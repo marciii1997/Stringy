@@ -24,6 +24,11 @@ class Artwork(models.Model):
 
     title = models.CharField("Interner Motivname", max_length=100)
     source = models.BinaryField()
+    auto_nails = models.PositiveSmallIntegerField(
+        "Zusatznägel automatisch platzieren (max.)", default=0, blank=True,
+        validators=[MaxValueValidator(96)],
+        help_text="0 schaltet die Suche aus. Stringy prüft zusätzliche Positionen anhand des berechneten Fadenbilds.",
+    )
     nail_positions = models.JSONField("Nagelanordnung", default=list, blank=True)
     anchors = models.PositiveIntegerField(
         "Anker", default=360, validators=[MinValueValidator(3), MaxValueValidator(720)]
@@ -75,6 +80,14 @@ class Artwork(models.Model):
     class Meta:
         verbose_name = "Motiv"
         verbose_name_plural = "Motive"
+
+    @property
+    def winding_positions(self):
+        return self.route.get("settings", {}).get("nail_positions") or self.nail_positions
+
+    @property
+    def winding_anchor_count(self):
+        return len(self.winding_positions) or self.anchors
 
     def __str__(self):
         return f"{self.title} (#{self.pk})"

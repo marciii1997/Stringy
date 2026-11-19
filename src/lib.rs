@@ -28,6 +28,7 @@ pub struct Settings {
     /// Coordinates relative to the canvas radius, positive y down. Empty selects the ring.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nail_positions: Vec<[f64; 2]>,
+    pub base_ring: usize,
     pub diameter_mm: f64,
     pub thread_mm: f64,
     pub opacity: f32,
@@ -51,6 +52,7 @@ impl Default for Settings {
         Self {
             anchors: 360,
             nail_positions: Vec::new(),
+            base_ring: 0,
             diameter_mm: 600.0,
             thread_mm: 0.25,
             opacity: 1.0,
@@ -86,6 +88,12 @@ impl Settings {
     fn validate(&self) -> Result<(), InvalidInput> {
         if !(3..=720).contains(&self.anchors) {
             return Err(InvalidInput("anchors must be between 3 and 720"));
+        }
+        if self.base_ring != 0
+            && (!(3..=self.nail_positions.len()).contains(&self.base_ring)
+                || !(1..=self.base_ring / 2).contains(&self.min_anchor_gap))
+        {
+            return Err(InvalidInput("invalid base ring or circular skip"));
         }
         if !self.nail_positions.is_empty() {
             if self.nail_positions.len() != self.anchors {
@@ -269,7 +277,10 @@ impl Lines {
         };
         for from in 0..settings.anchors {
             for to in from + gap..settings.anchors {
-                if settings.anchors - (to - from) < gap
+                let skip_ring_pair = to < settings.base_ring
+                    && (to - from).min(settings.base_ring - (to - from)) < settings.min_anchor_gap;
+                if skip_ring_pair
+                    || settings.anchors - (to - from) < gap
                     || crosses_intermediate_nail(&settings.nail_positions, from, to)
                 {
                     continue;
@@ -763,6 +774,28 @@ mod tests {
             baseline.change(&canvas, &lines, line, 0.9, true);
             assert!((before - loss(&guided.current) - extra).abs() < 1e-5);
         }
+    }
+
+    #[test]
+    fn augmenting_a_ring_preserves_ring_skips_and_links_to_the_added_pin() {
+        let ring = Canvas::new(64, 600., 32);
+        let mut positions: Vec<_> = ring
+            .anchors
+            .iter()
+            .map(|a| [a.x_mm / 300., a.y_mm / 300.])
+            .collect();
+        positions.push([0.05, 0.03]);
+        let settings = Settings {
+            anchors: 33,
+            base_ring: 32,
+            nail_positions: positions,
+            min_anchor_gap: 8,
+            max_segments: 0,
+            ..Default::default()
+        };
+        let lines = Lines::new(&Canvas::for_settings(64, &settings), &settings);
+        assert!(lines.id(0, 1).is_none() && lines.id(0, 31).is_none());
+        assert!(lines.id(0, 8).is_some() && lines.id(0, 32).is_some());
     }
 
     #[test]
