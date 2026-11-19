@@ -57,18 +57,24 @@ impl Canvas {
         }
     }
 
-    pub fn target(&self, source: &DynamicImage) -> Vec<f32> {
+    pub fn target(&self, source: &DynamicImage, settings: &crate::Settings) -> Vec<f32> {
         let mut gray = GrayImage::new(source.width(), source.height());
         for (dest, rgba) in gray.pixels_mut().zip(source.to_rgba8().pixels()) {
             let luma = u32::from(rgba.to_luma()[0]);
             let alpha = u32::from(rgba[3]);
             *dest = Luma([((luma * alpha + 255 * (255 - alpha) + 127) / 255) as u8]);
         }
-        let crop_size = gray.width().min(gray.height());
+        let crop_size = (f64::from(gray.width().min(gray.height())) / settings.zoom)
+            .round()
+            .max(1.0) as u32;
+        let offset = |length: u32, center: f64| {
+            ((f64::from(length) * center / 100.0 - f64::from(crop_size) / 2.0).floor() as u32)
+                .min(length - crop_size)
+        };
         let crop = image::imageops::crop_imm(
             &gray,
-            (gray.width() - crop_size) / 2,
-            (gray.height() - crop_size) / 2,
+            offset(gray.width(), settings.center_x),
+            offset(gray.height(), settings.center_y),
             crop_size,
             crop_size,
         );
@@ -82,7 +88,7 @@ impl Canvas {
         .zip(&self.inside)
         .map(|(p, &inside)| {
             if inside {
-                1.0 - f32::from(p[0]) / 255.0
+                1.0 - (f32::from(p[0]) / 255.0).powf(settings.gamma)
             } else {
                 0.0
             }

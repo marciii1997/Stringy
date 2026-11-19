@@ -3,6 +3,9 @@
   <h1>Meine Adventskalender</h1>
   {% if user.is_staff %}
     <nav class="actions">
+      {% if perms.studio.view_artwork %}
+        <a href="{% url 'admin:studio_artwork_changelist' %}">Motive und Simulationen</a>
+      {% endif %}
       {% if perms.studio.add_artwork %}
         <a href="{% url 'admin:studio_artwork_add' %}">Neues Bild umwandeln</a>
       {% endif %}

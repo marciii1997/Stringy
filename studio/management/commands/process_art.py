@@ -30,24 +30,54 @@ def process_one():
             folder = Path(temp)
             source = folder / "bild"
             source.write_bytes(art.source)
-            subprocess.run(
-                [
-                    settings.STRINGY_BIN,
-                    str(source),
-                    "--output",
-                    temp,
-                    "--anchors",
-                    str(art.anchors),
-                    "--diameter-mm",
-                    str(art.diameter),
-                    "--thread-mm",
-                    str(art.thread),
-                    "--max-segments",
-                    str(art.budget),
-                ],
-                check=True,
-                timeout=240,
-            )
+            command = [
+                settings.STRINGY_BIN,
+                str(source),
+                "--output",
+                temp,
+                "--anchors",
+                str(art.anchors),
+                "--diameter-mm",
+                str(art.diameter),
+                "--thread-mm",
+                str(art.thread),
+                "--passes",
+                str(art.passes),
+                "--zoom",
+                str(art.zoom),
+                "--center-x",
+                str(art.center_x),
+                "--center-y",
+                str(art.center_y),
+                "--gamma",
+                str(art.gamma),
+                "--detail",
+                str(art.detail),
+                "--opacity",
+                str(art.opacity),
+                "--max-segments",
+                str(art.budget),
+            ]
+            process = subprocess.Popen(command)
+            try:
+                for _ in range(30):
+                    try:
+                        code = process.wait(timeout=60)
+                    except subprocess.TimeoutExpired:
+                        heartbeat = timezone.now()
+                        if not claim.update(claimed_at=heartbeat):
+                            return True
+                        claim = Artwork.objects.filter(pk=pk, claimed_at=heartbeat)
+                    else:
+                        if code:
+                            raise subprocess.CalledProcessError(code, command)
+                        break
+                else:
+                    raise subprocess.TimeoutExpired(command, 1800)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
             route = json.loads((folder / "path.json").read_bytes())
             claim.update(
                 state=Artwork.State.READY,

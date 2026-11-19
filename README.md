@@ -22,8 +22,12 @@ Der Optimierer bewertet in jedem Schritt die vom aktuellen Anker ausgehenden
 Sehnen parallel. Er wählt anhand des quadrierten Graustufenfehlers und einer
 kleinen Strafe für wiederholte Sehnen. Der Helligkeitsgewinn berücksichtigt,
 dass weitere Fäden über bereits dunklen Stellen weniger verändern.
-Wenn kein zulässiger Schritt den bewerteten Fehler weiter reduziert, endet
-der Pfad vor Erreichen der Obergrenze. Bei Gleichstand gewinnt der Anker mit
+Optimierer 2 bewertet einzelne Pixel und die mittlere Helligkeit in 4 × 4
+Pixel großen Bereichen. Das Detailgewicht priorisiert lokale Kontraste.
+An einer Sackgasse prüft er ausgewählte Verbindungen mit einem zweiten Zug
+voraus. Standardmäßig versetzt er in bis zu drei Nachbesserungsrunden frühere Anker der
+Route und versucht anschließend erneut, den Pfad zu verlängern. Das Limit
+bleibt eine Obergrenze. Bei Gleichstand gewinnt der Anker mit
 der kleineren Nummer. Der Cache speichert symmetrische Sehnen einmal und
 berechnet Sehnen bei ausgeschöpftem Speicherbudget bei Bedarf.
 
@@ -137,3 +141,37 @@ Im nächsten offenen Türchen zeigt **Fädelmodus** den aktuellen und den nächs
 Anker. **Verbindung gefädelt** speichert einen Schritt im Konto, **Einen Schritt
 zurück** korrigiert ihn. Nach einem Gerätewechsel öffnet sich der gespeicherte Stand.
 Der Vorschau-Schieberegler lässt sich unabhängig davon bewegen.
+
+
+### Vorhandene Bilder neu berechnen
+
+Unter **Motive und Simulationen → Simulation öffnen → Parameter ändern und neu berechnen**
+kannst du das gespeicherte Originalfoto erneut verwenden. Die neue Variante
+erhält eine eigene Nummer. Die vorherige Berechnung lässt sich von dort öffnen.
+Bestehende Kalender behalten ihre ursprüngliche Variante und ihren Fortschritt.
+
+Für mehr Rechenaufwand erhöhe die **Nachbesserungsrunden** von 3 auf etwa 8.
+Für ein kleines Gesicht im Foto erhöhe die **Vergrößerung** und positioniere
+den Ausschnitt über die horizontale und vertikale Bildmitte in Prozent.
+Gamma unter 1 hellt die Mitteltöne auf. Verwende für die Fadenstärke den
+Durchmesser deines tatsächlichen Fadens. Der Download von JSON und SVG gehört
+immer zur gerade geöffneten Berechnung.
+
+### Bestehende Docker-Installation auf dem PC aktualisieren
+
+Öffne das Terminal im bisherigen Projektordner mit deiner `.env` und der
+`compose.yaml`. Verwende für den zuvor beschriebenen lokalen Test diese Befehle:
+
+```sh
+git switch main
+git pull --ff-only origin main
+docker compose build web
+docker compose up -d --no-build --force-recreate
+docker compose ps -a
+```
+
+Der Dienst `migrate` sollte mit `Exited (0)` enden, `web` und `worker` sollten
+laufen. Compose verwendet im gleichen Projekt das vorhandene Datenvolume.
+Öffne `http://localhost:8000` und melde dich mit deinem bisherigen Admin-Konto an.
+Neue Ergebnisse zeigen **Optimierer 2**. Bei Problemen zeigt
+`docker compose logs --tail=80 migrate web worker` die Startmeldungen.

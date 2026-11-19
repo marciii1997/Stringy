@@ -1,5 +1,5 @@
 const player = document.querySelector(".player");
-const {path, anchors, start, width, initial} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
 const slider = player.querySelector("input");
@@ -17,6 +17,7 @@ slider.value = initial ?? slider.max;
 
 function draw() {
     const step = Number(slider.value);
+    ctx.globalAlpha = 1;
     ctx.fillStyle = "white";
     ctx.fillRect(0, 0, size, size);
     ctx.beginPath();
@@ -25,7 +26,8 @@ function draw() {
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.lineWidth = width * radius * 2;
-    ctx.strokeStyle = "#111";
+    ctx.globalAlpha = opacity ?? 1;
+    ctx.strokeStyle = "#000";
     for (let i = 1; i <= start + step; i++) {
         ctx.beginPath();
         ctx.moveTo(...points[path[i - 1]]);

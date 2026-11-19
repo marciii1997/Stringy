@@ -4,6 +4,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.html import format_html
 
+from .forms import CalculationForm
 from .models import Artwork, Calendar
 
 admin.site.site_header = "Stringy · Atelier"
@@ -11,18 +12,10 @@ admin.site.site_title = "Stringy"
 admin.site.index_title = "Verwaltung"
 
 
-class ArtworkForm(forms.ModelForm):
+class ArtworkForm(CalculationForm):
     photo = forms.ImageField(
         label="Bilddatei", help_text="JPEG, PNG oder WebP, maximal 10 MiB und 8192 Pixel je Seite."
     )
-
-    class Meta:
-        model = Artwork
-        labels = {"diameter": "Ankerkreisdurchmesser (mm)"}
-        help_texts = {
-            "diameter": "Für ein Werkstück mit Ø 600 mm und 5 mm Rand den Ankerkreis auf 590 mm setzen."
-        }
-        fields = ("title", "anchors", "diameter", "thread", "budget")
 
     def clean_photo(self):
         photo = self.cleaned_data["photo"]
@@ -39,7 +32,7 @@ class ArtworkForm(forms.ModelForm):
 
 @admin.register(Artwork)
 class ArtworkAdmin(admin.ModelAdmin):
-    list_display = ("title", "state", "count", "simulation")
+    list_display = ("title", "pk", "state", "count", "simulation")
     list_filter = ("state",)
     actions = ("retry_failed",)
 
@@ -68,10 +61,17 @@ class ArtworkAdmin(admin.ModelAdmin):
                 "diameter",
                 "thread",
                 "budget",
+                "passes",
+                "detail",
+                "opacity",
+                "zoom",
+                "center_x",
+                "center_y",
+                "gamma",
                 "simulation",
                 "error",
             )
-        return ("title", "photo", "anchors", "diameter", "thread", "budget")
+        return ("title", "photo", *CalculationForm.Meta.fields[1:])
 
     def get_readonly_fields(self, request, obj=None):
         return self.get_fields(request, obj)[1:] if obj else ()

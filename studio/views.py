@@ -6,6 +6,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from .forms import CalculationForm
 from .laser import LaserForm, laser_svg
 from .models import Artwork, Calendar
 
@@ -74,6 +75,7 @@ def door(request, pk, day):
                 "start": start,
                 "initial": cursor - start,
                 "anchors": gift.artwork.anchors,
+                "opacity": gift.artwork.opacity,
                 "width": gift.artwork.thread / gift.artwork.diameter,
             },
         },
@@ -129,10 +131,26 @@ def simulation(request, pk):
                 "path": art.route["path"],
                 "start": 0,
                 "anchors": art.anchors,
+                "opacity": art.opacity,
                 "width": art.thread / art.diameter,
             },
         },
     )
+
+
+@private_artwork
+@permission_required("studio.add_artwork", raise_exception=True)
+def recalculate(request, pk):
+    art = get_object_or_404(Artwork.objects.defer("target", "preview", "route", "source"), pk=pk)
+    initial = {field: getattr(art, field) for field in CalculationForm.Meta.fields}
+    form = CalculationForm(request.POST if request.method == "POST" else None, initial=initial)
+    if form.is_valid():
+        variant = form.save(commit=False)
+        variant.source = art.source
+        variant.previous = art
+        variant.save()
+        return redirect("simulation", pk=variant.pk)
+    return render(request, "studio/recalculate.html", {"form": form, "art": art})
 
 
 @private_artwork

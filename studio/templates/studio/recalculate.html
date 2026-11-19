@@ -1,0 +1,13 @@
+{% extends "studio/base.html" %}
+{% block title %}Neu berechnen · Stringy{% endblock %}
+{% block content %}
+  <a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
+  <h1>Motiv neu berechnen</h1>
+  <p>Dein gespeichertes Foto wird mit diesen Einstellungen als neue Variante berechnet.
+    Bereits verschenkte Kalender behalten ihren Fadenpfad.</p>
+  <form method="post" class="laser-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button>Neue Variante berechnen</button>
+  </form>
+{% endblock %}

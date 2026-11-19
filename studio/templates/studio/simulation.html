@@ -2,7 +2,11 @@
 {% block content %}
   <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
+  <p>Berechnung #{{ art.pk }} · Optimierer {{ art.route.optimizer_version|default:"1" }}</p>
   <p>{{ art.count }} Verbindungen · {{ art.anchors }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden</p>
+  <p>{% if art.route.stop_reason == "segment_limit" %}Das Verbindungslimit ist erreicht.{% elif art.route.stop_reason == "no_improving_move" %}Die Suche hat keinen weiteren vorteilhaften Fadenzug gefunden.{% endif %}</p>
+  {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}
+  {% if art.previous_id %}<p><a href="{% url 'simulation' art.previous_id %}">Vorherige Berechnung #{{ art.previous_id }} ansehen</a></p>{% endif %}
   <div class="spread">
     <div>
       <h2>Fadenverlauf</h2>

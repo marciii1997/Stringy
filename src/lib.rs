@@ -1,4 +1,6 @@
+mod objective;
 mod raster;
+use objective::Objective;
 
 use std::{
     fmt,
@@ -22,6 +24,12 @@ pub struct Settings {
     pub diameter_mm: f64,
     pub thread_mm: f64,
     pub opacity: f32,
+    pub detail: f32,
+    pub passes: usize,
+    pub zoom: f64,
+    pub center_x: f64,
+    pub center_y: f64,
+    pub gamma: f32,
     pub max_segments: usize,
     pub raster_size: usize,
     pub min_anchor_gap: usize,
@@ -37,6 +45,12 @@ impl Default for Settings {
             diameter_mm: 600.0,
             thread_mm: 0.25,
             opacity: 1.0,
+            detail: 1.0,
+            passes: 3,
+            zoom: 1.0,
+            center_x: 50.0,
+            center_y: 50.0,
+            gamma: 1.0,
             max_segments: 12_000,
             raster_size: 512,
             min_anchor_gap: 8,
@@ -82,6 +96,23 @@ impl Settings {
             return Err(InvalidInput(
                 "thread diameter must be between 0.001 mm and one tenth of the canvas diameter",
             ));
+        }
+        if !(1.0..=5.0).contains(&self.zoom)
+            || !(0.0..=100.0).contains(&self.center_x)
+            || !(0.0..=100.0).contains(&self.center_y)
+        {
+            return Err(InvalidInput(
+                "zoom must be 1–5 and crop center must be 0–100 percent",
+            ));
+        }
+        if !(0.3..=3.0).contains(&self.gamma) {
+            return Err(InvalidInput("gamma must be 0.3–3"));
+        }
+        if self.passes > 12 {
+            return Err(InvalidInput("refinement passes must be at most 12"));
+        }
+        if !(0.0..=20.0).contains(&self.detail) {
+            return Err(InvalidInput("detail must be between 0 and 20"));
         }
         if !(0.0 < self.opacity && self.opacity <= 1.0) {
             return Err(InvalidInput(
@@ -135,6 +166,7 @@ pub struct Segment {
 #[derive(Debug, Serialize)]
 pub struct Route {
     pub format_version: u32,
+    pub optimizer_version: u32,
     pub settings: Settings,
     pub anchors: Vec<Anchor>,
     pub path: Vec<usize>,
@@ -229,6 +261,13 @@ impl Lines {
         }
     }
 
+    fn id(&self, from: usize, to: usize) -> Option<usize> {
+        self.moves[from]
+            .binary_search_by_key(&to, |m| m.anchor)
+            .ok()
+            .map(|i| self.moves[from][i].line)
+    }
+
     fn visit(&self, canvas: &Canvas, id: usize, mut callback: impl FnMut(Sample)) {
         let line = &self.lines[id];
         if line.samples.is_empty() {
@@ -247,27 +286,6 @@ impl Lines {
     }
 }
 
-#[derive(Clone, Copy)]
-struct PixelTerms {
-    linear: f32,
-    quadratic: f32,
-}
-
-impl PixelTerms {
-    fn new(target: f32, current: f32) -> Self {
-        let remaining = 1.0 - current;
-        Self {
-            linear: 2.0 * (target - current) * remaining,
-            quadratic: remaining * remaining,
-        }
-    }
-
-    // C' = C + alpha * (1 - C). Expand (T - C)^2 - (T - C')^2.
-    fn gain(self, alpha: f32) -> f32 {
-        alpha * (self.linear - alpha * self.quadratic)
-    }
-}
-
 fn rmse(canvas: &Canvas, target: &[f32], current: &[f32]) -> f64 {
     let mut squared_error = 0.0;
     let mut pixels = 0;
@@ -280,8 +298,127 @@ fn rmse(canvas: &Canvas, target: &[f32], current: &[f32]) -> f64 {
     (squared_error / f64::from(pixels)).sqrt()
 }
 
-/// Generate one continuous route. Progress is reported before each segment search.
-/// Returning Break yields the artwork and partial route computed so far.
+struct Search<'a> {
+    canvas: &'a Canvas,
+    lines: &'a Lines,
+    target: &'a [f32],
+    settings: &'a Settings,
+    image: Objective,
+    repeats: Vec<u32>,
+    scratch: Vec<objective::Scratch>,
+}
+
+impl Search<'_> {
+    fn change(&mut self, id: usize, add: bool) {
+        self.image
+            .change(self.canvas, self.lines, id, self.settings.opacity, add);
+        if add {
+            self.repeats[id] += 1;
+        } else {
+            self.repeats[id] -= 1;
+        }
+    }
+
+    fn gain(&mut self, line: usize) -> f64 {
+        self.image.gain(
+            self.canvas,
+            self.lines,
+            line,
+            self.target,
+            self.settings.opacity,
+            &mut self.scratch[0],
+        ) - self.settings.repeat_penalty * f64::from(self.repeats[line])
+    }
+
+    fn pair_gain(&mut self, first: usize, second: usize) -> f64 {
+        let one = self.gain(first);
+        self.change(first, true);
+        let two = self.gain(second);
+        self.change(first, false);
+        one + two
+    }
+
+    fn next(&mut self, from: usize, remaining: usize) -> Option<Move> {
+        let mut candidates: Vec<_> = self.lines.moves[from].iter().map(|&m| (0.0, m)).collect();
+        candidates
+            .par_chunks_mut(32)
+            .zip(self.scratch.par_iter_mut())
+            .for_each(|(chunk, scratch)| {
+                for (score, m) in chunk {
+                    *score = self.image.gain(
+                        self.canvas,
+                        self.lines,
+                        m.line,
+                        self.target,
+                        self.settings.opacity,
+                        scratch,
+                    ) - self.settings.repeat_penalty * f64::from(self.repeats[m.line]);
+                }
+            });
+        candidates.sort_unstable_by(|(sa, a), (sb, b)| {
+            sb.total_cmp(sa).then_with(|| a.anchor.cmp(&b.anchor))
+        });
+        if candidates[0].0 > MIN_GAIN {
+            return Some(candidates[0].1);
+        }
+        if remaining < 2 {
+            return None;
+        }
+        // Try low-cost connectors and a spread of more expensive ones. The next
+        // greedy move can always take the continuation evaluated here.
+        let mut best = MIN_GAIN;
+        let mut bridge = None;
+        for &(first_gain, first) in candidates.iter().take(8).chain(
+            candidates
+                .iter()
+                .skip(8)
+                .step_by((candidates.len() / 24).max(1)),
+        ) {
+            self.change(first.line, true);
+            for second in &self.lines.moves[first.anchor] {
+                let combined = first_gain + self.gain(second.line);
+                if combined > best {
+                    best = combined;
+                    bridge = Some(first);
+                }
+            }
+            self.change(first.line, false);
+        }
+        bridge
+    }
+
+    // Reconsider earlier greedy decisions. Moving an interior vertex replaces
+    // two chords and keeps the entire route windable from the same start.
+    fn refine(&mut self, path: &mut [usize]) -> usize {
+        let mut changed = 0;
+        for i in 1..path.len().saturating_sub(1) {
+            let (u, v, w) = (path[i - 1], path[i], path[i + 1]);
+            let left = self.lines.id(u, v).unwrap();
+            let right = self.lines.id(v, w).unwrap();
+            self.change(left, false);
+            self.change(right, false);
+            let mut best = self.pair_gain(left, right);
+            let mut winner = (v, left, right);
+            for offset in [-16, -8, -4, -2, -1, 1, 2, 4, 8, 16] {
+                let x = (v as isize + offset).rem_euclid(self.settings.anchors as isize) as usize;
+                if let (Some(a), Some(b)) = (self.lines.id(u, x), self.lines.id(x, w)) {
+                    let gain = self.pair_gain(a, b);
+                    if gain > best + MIN_GAIN {
+                        best = gain;
+                        winner = (x, a, b);
+                    }
+                }
+            }
+            path[i] = winner.0;
+            self.change(winner.1, true);
+            self.change(winner.2, true);
+            changed += usize::from(v != winner.0);
+        }
+        changed
+    }
+}
+
+/// Generate a continuous route. Break from the progress callback to return the partial result.
 pub fn generate(
     source: &DynamicImage,
     settings: &Settings,
@@ -289,75 +426,73 @@ pub fn generate(
 ) -> Result<Artwork, InvalidInput> {
     settings.validate(source)?;
     let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
-    let target = canvas.target(source);
-    let mut current = vec![0.0; target.len()];
-    let mut terms: Vec<_> = target.iter().map(|&t| PixelTerms::new(t, 0.0)).collect();
-    let initial_rmse = rmse(&canvas, &target, &current);
+    let target = canvas.target(source, settings);
+    let image = Objective::new(&canvas, &target, settings.detail);
+    let initial_rmse = rmse(&canvas, &target, &image.current);
     let lines = Lines::new(&canvas, settings);
-    let mut repeats = vec![0u32; lines.lines.len()];
+    let scratch = (0..settings.anchors.div_ceil(32))
+        .map(|_| image.scratch())
+        .collect();
+    let mut search = Search {
+        canvas: &canvas,
+        lines: &lines,
+        target: &target,
+        settings,
+        image,
+        repeats: vec![0; lines.lines.len()],
+        scratch,
+    };
     let mut path = vec![settings.start_anchor];
-    let mut segments = Vec::with_capacity(settings.max_segments);
-    let mut total_length_mm = 0.0;
-    let mut stop_reason = StopReason::SegmentLimit;
-
-    while segments.len() < settings.max_segments {
-        let from = *path.last().expect("path includes its starting anchor");
+    let mut passes = 0;
+    let stop_reason = loop {
+        let from = *path.last().unwrap();
+        let count = path.len() - 1;
         if progress(Progress {
-            segments: segments.len(),
+            segments: count,
             anchor: from,
         })
         .is_break()
         {
-            stop_reason = StopReason::Cancelled;
-            break;
+            break StopReason::Cancelled;
         }
-        let best = lines.moves[from]
-            .par_iter()
-            .with_min_len(24)
-            .filter_map(|&candidate| {
-                let mut gain = 0.0;
-                lines.visit(&canvas, candidate.line, |sample| {
-                    gain += f64::from(
-                        terms[sample.index as usize].gain(settings.opacity * sample.coverage),
-                    );
-                });
-                let score = gain - settings.repeat_penalty * f64::from(repeats[candidate.line]);
-                (score > MIN_GAIN).then_some((score, candidate))
-            })
-            .max_by(|(score_a, a), (score_b, b)| {
-                score_a
-                    .total_cmp(score_b)
-                    .then_with(|| b.anchor.cmp(&a.anchor))
-            });
-
-        let Some((_, winner)) = best else {
-            stop_reason = StopReason::NoImprovingMove;
-            break;
+        if count < settings.max_segments
+            && initial_rmse > 0.0
+            && let Some(m) = search.next(from, settings.max_segments - count)
+        {
+            search.change(m.line, true);
+            path.push(m.anchor);
+            continue;
+        }
+        if passes < settings.passes && search.refine(&mut path) > 0 {
+            passes += 1;
+            continue;
+        }
+        break if count == settings.max_segments {
+            StopReason::SegmentLimit
+        } else {
+            StopReason::NoImprovingMove
         };
-        lines.visit(&canvas, winner.line, |sample| {
-            let index = sample.index as usize;
-            let darkness = &mut current[index];
-            let alpha = settings.opacity * sample.coverage;
-            *darkness += (1.0 - *darkness) * alpha;
-            terms[index] = PixelTerms::new(target[index], *darkness);
-        });
-        repeats[winner.line] += 1;
-        let length_mm = lines.lines[winner.line].length_mm;
-        total_length_mm += length_mm;
-        path.push(winner.anchor);
-        segments.push(Segment {
-            from,
-            to: winner.anchor,
-            length_mm,
-        });
-    }
-
+    };
+    let segments: Vec<_> = path
+        .windows(2)
+        .map(|pair| {
+            let (from, to) = (pair[0], pair[1]);
+            Segment {
+                from,
+                to,
+                length_mm: lines.lines[lines.id(from, to).unwrap()].length_mm,
+            }
+        })
+        .collect();
+    let total_length_mm: f64 = segments.iter().map(|s| s.length_mm).sum();
+    let current = search.image.current;
     Ok(Artwork {
         target: canvas.render(&target),
         preview: canvas.render(&current),
         cache_bytes_used: lines.cache.len() * size_of::<Sample>(),
         route: Route {
             format_version: 1,
+            optimizer_version: 2,
             final_rmse: rmse(&canvas, &target, &current),
             initial_rmse,
             settings: settings.clone(),
@@ -376,11 +511,86 @@ mod tests {
     use image::{Luma, Rgba, RgbaImage};
 
     #[test]
-    fn score_matches_error_reduction_with_overlapping_ink() {
-        let (target, previous, alpha) = (0.7_f32, 0.35_f32, 0.2_f32);
-        let next = previous + alpha * (1.0 - previous);
-        let expected = (target - previous).powi(2) - (target - next).powi(2);
-        assert!((PixelTerms::new(target, previous).gain(alpha) - expected).abs() < 1e-6);
+    fn predicted_gain_matches_rendered_loss_at_both_scales() {
+        let canvas = Canvas::new(65, 600.0, 32);
+        let target = vec![0.6; 65 * 65];
+        let settings = Settings {
+            anchors: 32,
+            raster_size: 65,
+            ..Settings::default()
+        };
+        let lines = Lines::new(&canvas, &settings);
+        let mut state = Objective::new(&canvas, &target, 0.0);
+        state.change(&canvas, &lines, 0, 0.8, true);
+        let loss = |state: &Objective| {
+            let mut error = 0.0;
+            for y in (0..65).step_by(4) {
+                for x in (0..65).step_by(4) {
+                    let (mut sum, mut n) = (0.0, 0);
+                    for j in y..(y + 4).min(65) {
+                        for i in x..(x + 4).min(65) {
+                            let k = j * 65 + i;
+                            if canvas.inside[k] {
+                                let residual = f64::from(target[k] - state.current[k]);
+                                error += 0.15 * residual.powi(2);
+                                sum += residual;
+                                n += 1;
+                            }
+                        }
+                    }
+                    if n > 0 {
+                        error += 0.85 * sum.powi(2) / f64::from(n);
+                    }
+                }
+            }
+            error
+        };
+        let gain = state.gain(&canvas, &lines, 0, &target, 0.8, &mut state.scratch());
+        let before = loss(&state);
+        state.change(&canvas, &lines, 0, 0.8, true);
+        assert!((before - loss(&state) - gain).abs() < 1e-5);
+    }
+
+    #[test]
+    fn removing_one_of_two_opaque_chords_preserves_the_other() {
+        let canvas = Canvas::new(65, 600.0, 32);
+        let target = vec![0.4; 65 * 65];
+        let settings = Settings {
+            anchors: 32,
+            raster_size: 65,
+            thread_mm: 20.0,
+            ..Settings::default()
+        };
+        let lines = Lines::new(&canvas, &settings);
+        let mut state = Objective::new(&canvas, &target, 1.0);
+        let id = lines.id(0, 16).unwrap();
+        state.change(&canvas, &lines, id, 1.0, true);
+        let once = state.current.clone();
+        assert!(once.contains(&1.0));
+        state.change(&canvas, &lines, id, 1.0, true);
+        state.change(&canvas, &lines, id, 1.0, false);
+        assert_eq!(once, state.current);
+        state.change(&canvas, &lines, id, 1.0, false);
+        assert!(state.current.iter().all(|x| x.abs() < 1e-6));
+    }
+
+    #[test]
+    fn zoom_uses_the_selected_source_position_and_gamma_lifts_midtones() {
+        let canvas = Canvas::new(64, 600.0, 32);
+        let source = DynamicImage::ImageLuma8(GrayImage::from_fn(128, 64, |x, _| {
+            Luma([if x < 64 { 64 } else { 196 }])
+        }));
+        let mut settings = Settings {
+            zoom: 2.0,
+            center_x: 0.0,
+            ..Settings::default()
+        };
+        let dark = canvas.target(&source, &settings)[32 * 64 + 32];
+        settings.center_x = 100.0;
+        let light = canvas.target(&source, &settings)[32 * 64 + 32];
+        assert!(dark > light + 0.4);
+        settings.gamma = 0.5;
+        assert!(canvas.target(&source, &settings)[32 * 64 + 32] < light);
     }
 
     #[test]
@@ -394,7 +604,7 @@ mod tests {
         let canvas = Canvas::new(64, 600.0, 32);
         assert!((canvas.anchors[0].y_mm + 300.0).abs() < 1e-9);
         assert!((canvas.anchors[8].x_mm - 300.0).abs() < 1e-9);
-        let target = canvas.target(&DynamicImage::ImageRgba8(source));
+        let target = canvas.target(&DynamicImage::ImageRgba8(source), &Settings::default());
         assert!(target.into_iter().all(|darkness| darkness == 0.0));
     }
 
@@ -429,6 +639,28 @@ mod tests {
             assert!(gap.min(settings.anchors - gap) >= settings.min_anchor_gap);
             assert!(segment.length_mm > 0.0 && segment.length_mm <= settings.diameter_mm + 1e-9);
         }
+        // Independently replay the exported chords, including changed interior anchors.
+        let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
+        let mut replay = vec![0.0; canvas.inside.len()];
+        for segment in &route.segments {
+            canvas.rasterize(
+                canvas.points[segment.from],
+                canvas.points[segment.to],
+                settings.thread_mm / settings.diameter_mm * (canvas.size - 1) as f64,
+                |sample| {
+                    let pixel = &mut replay[sample.index as usize];
+                    *pixel += (1.0 - *pixel) * settings.opacity * sample.coverage;
+                },
+            );
+        }
+        assert!(
+            canvas
+                .render(&replay)
+                .as_raw()
+                .iter()
+                .zip(cached.preview.as_raw())
+                .all(|(a, b)| a.abs_diff(*b) <= 1)
+        );
         let length: f64 = route.segments.iter().map(|segment| segment.length_mm).sum();
         assert!((route.total_length_m * 1000.0 - length).abs() < 1e-8);
     }

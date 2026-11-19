@@ -24,6 +24,28 @@ class Artwork(models.Model):
     thread = models.FloatField(
         "Fadenstärke (mm)", default=0.25, validators=[MinValueValidator(0.05), MaxValueValidator(2)]
     )
+    detail = models.FloatField(
+        "Detailgewicht", default=1, validators=[MinValueValidator(0), MaxValueValidator(20)]
+    )
+    zoom = models.FloatField(
+        "Vergrößerung", default=1, validators=[MinValueValidator(1), MaxValueValidator(5)]
+    )
+    center_x = models.FloatField(
+        "Bildmitte horizontal (%)", default=50, validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    center_y = models.FloatField(
+        "Bildmitte vertikal (%)", default=50, validators=[MinValueValidator(0), MaxValueValidator(100)]
+    )
+    gamma = models.FloatField(
+        "Helligkeit (Gamma)", default=1, validators=[MinValueValidator(0.3), MaxValueValidator(3)]
+    )
+    passes = models.PositiveSmallIntegerField(
+        "Nachbesserungsrunden", default=3, validators=[MaxValueValidator(12)]
+    )
+    opacity = models.FloatField(
+        "Fadendeckkraft", default=1, validators=[MinValueValidator(0.05), MaxValueValidator(1)]
+    )
+    previous = models.ForeignKey("self", on_delete=models.SET_NULL, null=True, editable=False)
     budget = models.PositiveIntegerField(
         "Maximale Verbindungen",
         default=12000,
@@ -42,7 +64,7 @@ class Artwork(models.Model):
         verbose_name_plural = "Motive"
 
     def __str__(self):
-        return self.title
+        return f"{self.title} (#{self.pk})"
 
 
 def advent_year():

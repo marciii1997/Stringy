@@ -29,6 +29,24 @@ struct Args {
     diameter_mm: f64,
     #[arg(long, default_value_t = Settings::default().thread_mm)]
     thread_mm: f64,
+    /// Magnification of the square crop.
+    #[arg(long, default_value_t = Settings::default().zoom)]
+    zoom: f64,
+    /// Crop center as a percentage of the oriented image width.
+    #[arg(long, default_value_t = Settings::default().center_x)]
+    center_x: f64,
+    /// Crop center as a percentage of the oriented image height.
+    #[arg(long, default_value_t = Settings::default().center_y)]
+    center_y: f64,
+    /// Brightness exponent for the target. Values below one lift midtones.
+    #[arg(long, default_value_t = Settings::default().gamma)]
+    gamma: f32,
+    /// Maximum path-refinement sweeps (0 to 12).
+    #[arg(long, default_value_t = Settings::default().passes)]
+    passes: usize,
+    /// Priority given to local contrast in the photograph (0 to 20).
+    #[arg(long, default_value_t = Settings::default().detail)]
+    detail: f32,
     /// Thread opacity at full pixel coverage.
     #[arg(long, default_value_t = Settings::default().opacity)]
     opacity: f32,
@@ -58,6 +76,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         diameter_mm: args.diameter_mm,
         thread_mm: args.thread_mm,
         opacity: args.opacity,
+        detail: args.detail,
+        passes: args.passes,
+        zoom: args.zoom,
+        center_x: args.center_x,
+        center_y: args.center_y,
+        gamma: args.gamma,
         max_segments: args.max_segments,
         raster_size: args.raster_size,
         min_anchor_gap: args.min_anchor_gap.unwrap_or_else(|| {

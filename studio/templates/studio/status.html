@@ -9,6 +9,7 @@
   <h1>{{ art.title }}</h1>
   <h2>{{ art.get_state_display }}</h2>
   {% if art.state == "failed" %}
+    {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}
     <p>{{ art.error }} In der Motivliste kannst du die Berechnung erneut starten.</p>
   {% else %}
     <p>Sobald der Fadenpfad berechnet ist, erscheint hier die Simulation.</p>

@@ -96,6 +96,13 @@ class CalendarTests(TestCase):
                 "thread": 0.25,
                 "anchors": 360,
                 "budget": 12000,
+                "passes": 3,
+                "detail": 1,
+                "zoom": 1,
+                "center_x": 50,
+                "center_y": 50,
+                "gamma": 1,
+                "opacity": 1,
             },
         )
         self.assertEqual(res.status_code, 302)
@@ -118,6 +125,29 @@ class CalendarTests(TestCase):
         second.refresh_from_db()
         self.gift.refresh_from_db()
         self.assertEqual((second.finished, self.gift.finished), (1, 0))
+
+    def test_recalculate_reuses_photo_and_preserves_assigned_calendar(self):
+        url = reverse("recalculate", args=[self.art.pk])
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.client.force_login(self.admin)
+        form = self.client.get(url).context["form"]
+        data = form.initial.copy()
+        self.assertEqual(data["diameter"], self.art.diameter)
+        self.assertFalse(self.client.post(url, {**data, "zoom": 0}).context["form"].is_valid())
+        data.update(title="Feines Porträt", zoom=2, center_x=61, gamma=0.75, thread=0.15)
+        result = self.client.post(url, data)
+        variant = Artwork.objects.get(previous=self.art)
+        self.assertRedirects(result, reverse("simulation", args=[variant.pk]))
+        self.assertEqual(variant.source, self.art.source)
+        self.assertEqual(
+            (variant.zoom, variant.center_x, variant.gamma, variant.thread), (2, 61, 0.75, 0.15)
+        )
+        self.assertEqual(variant.state, Artwork.State.QUEUED)
+        self.gift.refresh_from_db()
+        self.art.refresh_from_db()
+        self.assertEqual(self.gift.artwork_id, self.art.pk)
+        self.assertEqual(self.art.route["path"], self.path)
+        self.assertEqual(self.art.zoom, 1)
 
 
 class WorkerTests(TestCase):
