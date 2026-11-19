@@ -1,0 +1,16 @@
+{% extends "studio/base.html" %}
+{% block head %}
+  {% if art.state != "failed" %}
+    <meta http-equiv="refresh" content="5">
+  {% endif %}
+{% endblock %}
+{% block content %}
+  <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
+  <h1>{{ art.title }}</h1>
+  <h2>{{ art.get_state_display }}</h2>
+  {% if art.state == "failed" %}
+    <p>{{ art.error }} In der Motivliste kannst du die Berechnung erneut starten.</p>
+  {% else %}
+    <p>Sobald der Fadenpfad berechnet ist, erscheint hier die Simulation.</p>
+  {% endif %}
+{% endblock %}

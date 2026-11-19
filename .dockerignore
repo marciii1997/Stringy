@@ -1,0 +1,10 @@
+*
+!src/
+!src/**
+!Cargo.toml
+!Cargo.lock
+!requirements.txt
+!studio/
+!studio/**
+!manage.py
+**/__pycache__/

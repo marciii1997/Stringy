@@ -1,0 +1,29 @@
+{% extends "studio/base.html" %}
+{% block title %}Türchen {{ day }} · Stringy{% endblock %}
+{% block content %}
+  <a href="{% url 'calendar' gift.pk %}">← {{ gift.title }}</a>
+  <h1>Türchen {{ day }}</h1>
+  <div class="spread">
+    {% include "studio/player.html" %}
+    <section>
+      <h2>Deine Zahlenfolge</h2>
+      <p>Beginne an Anker <strong>{{ sequence.0 }}</strong>. Folge den Zahlen von links nach rechts und lege den Faden jeweils um den nächsten Anker.</p>
+      <p>{{ count }} Verbindungen</p>
+      <ol class="sequence">
+        {% for anchor in sequence %}
+          <li>{{ anchor }}</li>
+        {% endfor %}
+      </ol>
+      {% if gift.finished == day|add:"-1" %}
+        <form method="post" action="{% url 'complete' gift.pk day %}">
+          {% csrf_token %}
+          <button>Als fertig markieren</button>
+        </form>
+      {% elif gift.finished >= day %}
+        <p>Dieses Türchen ist fertig.</p>
+      {% else %}
+        <p>Markiere zuerst die vorherigen Türchen als fertig.</p>
+      {% endif %}
+    </section>
+  </div>
+{% endblock %}

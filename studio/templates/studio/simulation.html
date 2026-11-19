@@ -1,0 +1,32 @@
+{% extends "studio/base.html" %}
+{% block content %}
+  <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
+  <h1>{{ art.title }}</h1>
+  <p>{{ art.count }} Verbindungen · {{ art.anchors }} Anker · {{ art.route.total_length_m|floatformat:1 }} m Faden</p>
+  <div class="spread">
+    <div>
+      <h2>Fadenverlauf</h2>
+      {% include "studio/player.html" %}
+    </div>
+    <div>
+      <h2>Berechnete Vorschau</h2>
+      <img class="art"
+           src="{% url 'asset' art.pk 'preview' %}"
+           alt="Vollständige Fadensimulation">
+      <details>
+        <summary>Graustufenvorlage ansehen</summary>
+        <img class="art"
+             src="{% url 'asset' art.pk 'target' %}"
+             alt="Zugeschnittene Graustufenvorlage">
+      </details>
+      <p>
+        <a href="{% url 'asset' art.pk 'route' %}">Fadenpfad herunterladen</a>
+      </p>
+      {% if art.count >= 24 %}
+        <a href="{% url 'admin:studio_calendar_add' %}?artwork={{ art.pk }}">Kalender mit diesem Motiv anlegen</a>
+      {% else %}
+        <p>Für 24 Türchen werden mindestens 24 Verbindungen benötigt. Bitte wähle ein kontrastreicheres Motiv.</p>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

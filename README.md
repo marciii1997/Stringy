@@ -41,3 +41,70 @@ modelliert die optische Abdeckung bei der gewählten Rasterauflösung.
 ```bash
 cargo test --locked
 ```
+
+## Webatelier und Adventskalender
+
+Im Webatelier verwaltet eine Administratorin oder ein Administrator persönliche
+Zugänge, Motive und Adventskalender. Jeder Kalender gehört zu einem Konto,
+einem Motiv und einem Adventsjahr. Ein Konto kann mehrere Kalender erhalten.
+Empfänger sehen ihren Kalendernamen, die Ankeranordnung und ihre freigegebenen
+Fadenabschnitte. Motivname, Vorlage, vollständige Bildvorschau und Pfadexport
+sind dem Atelier vorbehalten.
+
+### Auf dem V-Server starten
+
+Voraussetzungen sind Docker mit Compose, eine Domain und ein HTTPS-Reverse-Proxy.
+Die Anwendung lauscht über Compose auf dem Loopback-Port 8000. Leite die Domain
+im Proxy dorthin und lasse den Proxy den Header `X-Forwarded-Proto` setzen.
+Für Caddy auf demselben Host genügt zum Beispiel dieser Site-Block mit deiner Domain.
+
+```caddyfile
+atelier.example.org {
+    reverse_proxy 127.0.0.1:8000
+}
+```
+
+Lege im Checkout einmalig eine private `.env` an. Ersetze die Beispieldomain.
+Der folgende Befehl bricht ab, falls die Datei bereits existiert.
+
+```sh
+(umask 077; set -C; printf 'DJANGO_SECRET_KEY=%s\nSTRINGY_HOSTS=atelier.example.org\n' "$(openssl rand -hex 48)" > .env)
+docker compose up --build -d
+docker compose exec web python manage.py createsuperuser
+```
+
+Öffne danach deine Domain und melde dich mit diesem Administratorkonto an.
+Für einen lokalen HTTP-Test verwende in einer separaten Testumgebung
+`STRINGY_HTTPS=0` und `STRINGY_HOSTS=localhost,127.0.0.1`.
+Für den öffentlichen HTTPS-Betrieb sind sichere Cookies standardmäßig aktiv.
+
+### Einen Kalender verschenken
+
+1. Lege über **Account anlegen** einen persönlichen Zugang mit Passwort an.
+   Für Beschenkte genügen die Standardeinstellungen ohne Mitarbeiterrechte.
+2. Wähle **Neues Bild umwandeln**, vergib einen internen Motivnamen und lade
+   das Foto hoch. Ein separater Worker berechnet den Fadenpfad im Hintergrund.
+   Nach dem Speichern öffnet sich die Statusseite und wechselt automatisch zur fertigen Simulation.
+3. Öffne die Simulation. Vergleiche die Graustufenvorlage mit der fertigen
+   Vorschau und prüfe den Verlauf über den Schieberegler. Für einen Kalender
+   braucht das Motiv mindestens 24 Verbindungen.
+4. Wähle **Kalender mit diesem Motiv anlegen**, die beschenkte Person, das Jahr
+   und einen Kalendernamen, der das Motiv geheim hält. Teile ihr den Zugang mit.
+5. Vom 1. bis 24. Dezember wird täglich um 00:00 Uhr in `Europe/Berlin` ein
+   Abschnitt freigeschaltet. Die Anker sind ab 0 oben im Uhrzeigersinn nummeriert.
+   Jede Tagesfolge beginnt am Endanker des Vortags. In der Tagesansicht kann
+   die Person die Simulation schrittweise ansehen und den Tag als fertig markieren.
+   Bereits freigeschaltete Türchen bleiben auch nach Weihnachten zugänglich.
+
+SQLite, Fotos, Ergebnisse und Fortschritt liegen gemeinsam im Docker-Volume
+`studio-data`. Für eine konsistente Dateisicherung Webdienst und Worker kurz
+stoppen oder die SQLite-Backup-Funktion verwenden. Bewahre den Schlüssel aus
+`.env` separat auf. Je Worker läuft eine Berechnung gleichzeitig.
+Unterbrochene Jobs werden nach sechs Minuten erneut aufgenommen.
+Fehlgeschlagene Motive lassen sich in der Motivliste erneut einreihen.
+
+### Webtests
+
+```sh
+docker compose exec web python manage.py test studio
+```

@@ -1,0 +1,15 @@
+{% extends "studio/base.html" %}
+{% block title %}Anmelden · Stringy{% endblock %}
+{% block content %}
+  <section class="login">
+    <div class="spool" aria-hidden="true"></div>
+    <div>
+      <h1>Willkommen im Atelier.</h1>
+      <p>Melde dich mit deinem persönlichen Zugang an.</p>
+      <form method="post" class="loginform">
+        {% csrf_token %}{{ form.as_p }}<input type="hidden" name="next" value="{{ next }}">
+        <button>Anmelden</button>
+      </form>
+    </div>
+  </section>
+{% endblock %}
