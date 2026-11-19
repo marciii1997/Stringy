@@ -22,6 +22,7 @@
       <p>
         <a href="{% url 'asset' art.pk 'route' %}">Fadenpfad herunterladen</a>
       </p>
+      <p><a href="{% url 'laser' art.pk %}">Canvas für den Laser vorbereiten</a></p>
       {% if art.count >= 24 %}
         <a href="{% url 'admin:studio_calendar_add' %}?artwork={{ art.pk }}">Kalender mit diesem Motiv anlegen</a>
       {% else %}

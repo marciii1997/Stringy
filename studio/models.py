@@ -68,6 +68,7 @@ class Calendar(models.Model):
     year = models.PositiveIntegerField(
         "Adventsjahr", default=advent_year, validators=[MinValueValidator(2000), MaxValueValidator(9999)]
     )
+    step = models.PositiveIntegerField("Verbindungen im aktuellen Türchen", default=0, editable=False)
     finished = models.PositiveSmallIntegerField("Fertige Türchen", default=0, editable=False)
 
     class Meta:

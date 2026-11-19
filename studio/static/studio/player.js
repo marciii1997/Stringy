@@ -1,5 +1,5 @@
 const player = document.querySelector(".player");
-const {path, anchors, start, width} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, start, width, initial} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
 const slider = player.querySelector("input");
@@ -13,7 +13,7 @@ const points = Array.from({length: anchors}, (_, index) => {
     return [size / 2 + radius * Math.cos(angle), size / 2 + radius * Math.sin(angle)];
 });
 slider.max = path.length - 1 - start;
-slider.value = slider.max;
+slider.value = initial ?? slider.max;
 
 function draw() {
     const step = Number(slider.value);

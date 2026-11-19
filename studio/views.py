@@ -1,10 +1,12 @@
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
+from .laser import LaserForm, laser_svg
 from .models import Artwork, Calendar
 
 
@@ -54,6 +56,8 @@ def door(request, pk, day):
     start, end = gift.bounds(day)
     # Only the released prefix crosses the recipient's trust boundary.
     path = gift.artwork.route["path"][: end + 1]
+    active = day == gift.finished + 1
+    cursor = start + gift.step if active else end
     return render(
         request,
         "studio/door.html",
@@ -61,10 +65,14 @@ def door(request, pk, day):
             "gift": gift,
             "day": day,
             "sequence": path[start:],
+            "active": active,
+            "current": path[cursor],
+            "following": path[cursor + 1] if cursor < end else None,
             "count": end - start,
             "playback": {
                 "path": path,
                 "start": start,
+                "initial": cursor - start,
                 "anchors": gift.artwork.anchors,
                 "width": gift.artwork.thread / gift.artwork.diameter,
             },
@@ -74,9 +82,30 @@ def door(request, pk, day):
 
 @require_POST
 @login_required
+def thread_step(request, pk, day):
+    gift = opened(request, pk, day)
+    start, end = gift.bounds(day)
+    try:
+        expected = int(request.POST["step"])
+        delta = {"next": 1, "back": -1}[request.POST["action"]]
+    except (ValueError, KeyError):
+        return HttpResponseBadRequest("Ungültiger Fädelschritt.")
+    target = expected + delta
+    if not (0 <= expected <= end - start and 0 <= target <= end - start):
+        return HttpResponseBadRequest("Schritt außerhalb dieses Türchens.")
+    Calendar.objects.filter(pk=pk, recipient=request.user, finished=day - 1, step=expected).update(
+        step=target
+    )
+    return redirect(reverse("door", args=[pk, day]) + "#faedeln")
+
+
+@require_POST
+@login_required
 def complete(request, pk, day):
     gift = opened(request, pk, day)
-    Calendar.objects.filter(pk=gift.pk, recipient=request.user, finished=day - 1).update(finished=day)
+    Calendar.objects.filter(pk=gift.pk, recipient=request.user, finished=day - 1).update(
+        finished=day, step=0
+    )
     return redirect("calendar", pk=pk)
 
 
@@ -104,6 +133,21 @@ def simulation(request, pk):
             },
         },
     )
+
+
+@private_artwork
+def laser(request, pk):
+    art = get_object_or_404(
+        Artwork.objects.only("title", "diameter", "anchors", "route"), pk=pk, state=Artwork.State.READY
+    )
+    form = LaserForm(
+        request.POST if request.method == "POST" else None, diameter=art.diameter, count=art.anchors
+    )
+    if form.is_valid():
+        response = HttpResponse(laser_svg(art.route, **form.cleaned_data), content_type="image/svg+xml")
+        response["Content-Disposition"] = f'attachment; filename="stringy-anker-{art.pk}.svg"'
+        return response
+    return render(request, "studio/laser.html", {"art": art, "form": form})
 
 
 @private_artwork

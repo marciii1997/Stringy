@@ -1,0 +1,18 @@
+{% extends "studio/base.html" %}
+{% block title %}Laserexport · Stringy{% endblock %}
+{% block content %}
+  <a href="{% url 'simulation' art.pk %}">← {{ art.title }}</a>
+  <h1>Canvas für den Laser</h1>
+  <p>{{ art.anchors }} Anker auf einem Kreis mit Ø {{ art.diameter|floatformat:"-2" }} mm.
+     Anker 0 liegt oben, die Nummern laufen im Uhrzeigersinn.</p>
+  <form method="post" class="laser-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <p>Der Werkstückdurchmesser ergibt sich aus Ankerkreisdurchmesser plus zweimal Rand.
+    Beim Import die Originalgröße in Millimetern übernehmen.</p>
+    <button>Laserdatei als SVG herunterladen</button>
+  </form>
+  <p>Schwarz markiert Ankerkreuze, Rot kennzeichnet Lochkonturen, Blau die
+  Nummerngravur und Grün den optionalen Außenkreis. Weise den verwendeten
+  Farben in deiner Lasersoftware die passenden Bearbeitungsschritte zu.</p>
+{% endblock %}

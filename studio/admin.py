@@ -18,6 +18,10 @@ class ArtworkForm(forms.ModelForm):
 
     class Meta:
         model = Artwork
+        labels = {"diameter": "Ankerkreisdurchmesser (mm)"}
+        help_texts = {
+            "diameter": "Für ein Werkstück mit Ø 600 mm und 5 mm Rand den Ankerkreis auf 590 mm setzen."
+        }
         fields = ("title", "anchors", "diameter", "thread", "budget")
 
     def clean_photo(self):
