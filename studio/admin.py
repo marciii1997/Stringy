@@ -62,6 +62,7 @@ class ArtworkAdmin(admin.ModelAdmin):
                 "thread",
                 "budget",
                 "passes",
+                "quality_search",
                 "detail",
                 "opacity",
                 "zoom",

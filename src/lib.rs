@@ -1,6 +1,9 @@
+mod exchange;
 mod objective;
+mod preview;
 mod raster;
 use objective::Objective;
+pub use preview::render_preview;
 
 use std::{
     fmt,
@@ -11,14 +14,15 @@ use std::{
 use image::{DynamicImage, GrayImage};
 use raster::{Canvas, Sample};
 use rayon::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use raster::Anchor;
 
 const MIB: usize = 1024 * 1024;
 const MIN_GAIN: f64 = 1e-8;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub anchors: usize,
     pub diameter_mm: f64,
@@ -75,10 +79,7 @@ impl fmt::Display for InvalidInput {
 impl std::error::Error for InvalidInput {}
 
 impl Settings {
-    fn validate(&self, source: &DynamicImage) -> Result<(), InvalidInput> {
-        if source.width() == 0 || source.height() == 0 {
-            return Err(InvalidInput("source image must have nonzero dimensions"));
-        }
+    fn validate(&self) -> Result<(), InvalidInput> {
         if !(3..=720).contains(&self.anchors) {
             return Err(InvalidInput("anchors must be between 3 and 720"));
         }
@@ -169,6 +170,7 @@ pub struct Segment {
 pub struct Route {
     pub format_version: u32,
     pub optimizer_version: u32,
+    pub accepted_global_passes: usize,
     pub settings: Settings,
     pub anchors: Vec<Anchor>,
     pub path: Vec<usize>,
@@ -203,6 +205,7 @@ struct Lines {
     moves: Vec<Vec<Move>>,
     cache: Vec<Sample>,
     width_px: f64,
+    coarse_cells: Vec<[u32; 48]>,
 }
 
 impl Lines {
@@ -255,7 +258,25 @@ impl Lines {
                 });
             }
         }
+        let coarse_cells = if canvas.size >= 768 && settings.anchors > 96 {
+            lines
+                .iter()
+                .map(|line| {
+                    let (a, b) = line.endpoints;
+                    let (p, q) = (canvas.points[a], canvas.points[b]);
+                    std::array::from_fn(|i| {
+                        let t = (i as f64 + 0.5) / 48.0;
+                        let x = (p.x + t * (q.x - p.x)).round() as usize;
+                        let y = (p.y + t * (q.y - p.y)).round() as usize;
+                        objective::cell_index(x, y, canvas.size) as u32
+                    })
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         Self {
+            coarse_cells,
             lines,
             moves,
             cache,
@@ -308,6 +329,7 @@ struct Search<'a> {
     image: Objective,
     repeats: Vec<u32>,
     scratch: Vec<objective::Scratch>,
+    exact_after_bridge: bool,
 }
 
 impl Search<'_> {
@@ -340,8 +362,7 @@ impl Search<'_> {
         one + two
     }
 
-    fn next(&mut self, from: usize, remaining: usize) -> Option<Move> {
-        let mut candidates: Vec<_> = self.lines.moves[from].iter().map(|&m| (0.0, m)).collect();
+    fn score_moves(&mut self, candidates: &mut [(f64, Move)]) {
         candidates
             .par_chunks_mut(32)
             .zip(self.scratch.par_iter_mut())
@@ -357,9 +378,33 @@ impl Search<'_> {
                     ) - self.settings.repeat_penalty * f64::from(self.repeats[m.line]);
                 }
             });
-        candidates.sort_unstable_by(|(sa, a), (sb, b)| {
+    }
+
+    fn next(&mut self, from: usize, remaining: usize) -> Option<Move> {
+        let mut candidates: Vec<_> = self.lines.moves[from].iter().map(|&m| (0.0, m)).collect();
+        let by_score = |(sa, a): &(f64, Move), (sb, b): &(f64, Move)| {
             sb.total_cmp(sa).then_with(|| a.anchor.cmp(&b.anchor))
-        });
+        };
+        let mut exact = candidates.len();
+        let require_exact = std::mem::take(&mut self.exact_after_bridge);
+        if !require_exact && !self.lines.coarse_cells.is_empty() && exact > 64 {
+            for (score, m) in &mut candidates {
+                *score = self.image.coarse_score(&self.lines.coarse_cells[m.line])
+                    * self.lines.lines[m.line].length_mm;
+            }
+            candidates.select_nth_unstable_by(64, by_score);
+            exact = 64;
+        }
+        self.score_moves(&mut candidates[..exact]);
+        candidates[..exact].sort_unstable_by(by_score);
+        if candidates[0].0 > MIN_GAIN {
+            return Some(candidates[0].1);
+        }
+        // A coarse shortlist alone must never terminate a route.
+        if exact < candidates.len() {
+            self.score_moves(&mut candidates[exact..]);
+            candidates.sort_unstable_by(by_score);
+        }
         if candidates[0].0 > MIN_GAIN {
             return Some(candidates[0].1);
         }
@@ -386,6 +431,8 @@ impl Search<'_> {
             }
             self.change(first.line, false);
         }
+        // An approximate shortlist could omit the continuation that paid for the connector.
+        self.exact_after_bridge = bridge.is_some();
         bridge
     }
 
@@ -448,7 +495,10 @@ pub fn generate_with_ink(
     background_ink: Option<&GrayImage>,
     mut progress: impl FnMut(Progress) -> ControlFlow<()>,
 ) -> Result<Artwork, InvalidInput> {
-    settings.validate(source)?;
+    if source.width() == 0 || source.height() == 0 {
+        return Err(InvalidInput("source image must have nonzero dimensions"));
+    }
+    settings.validate()?;
     let canvas = Canvas::new(settings.raster_size, settings.diameter_mm, settings.anchors);
     let mut target = canvas.target(source, settings);
     if let Some(map) = guide {
@@ -486,11 +536,13 @@ pub fn generate_with_ink(
         target: &target,
         settings,
         image,
+        exact_after_bridge: false,
         repeats: vec![0; lines.lines.len()],
         scratch,
     };
     let mut path = vec![settings.start_anchor];
     let mut passes = 0;
+    let mut exchanges = 0;
     let stop_reason = loop {
         let from = *path.last().unwrap();
         let count = path.len() - 1;
@@ -510,9 +562,14 @@ pub fn generate_with_ink(
             path.push(m.anchor);
             continue;
         }
-        if passes < settings.passes && search.refine(&mut path) > 0 {
+        if passes < settings.passes {
+            let moved = search.refine(&mut path);
+            let exchanged = search.exchange(&mut path, passes);
+            exchanges += usize::from(exchanged);
             passes += 1;
-            continue;
+            if moved > 0 || exchanged {
+                continue;
+            }
         }
         break if count == settings.max_segments {
             StopReason::SegmentLimit
@@ -539,13 +596,8 @@ pub fn generate_with_ink(
         cache_bytes_used: lines.cache.len() * size_of::<Sample>(),
         route: Route {
             format_version: 1,
-            optimizer_version: if background_ink.is_some() {
-                4
-            } else if guide.is_some() {
-                3
-            } else {
-                2
-            },
+            optimizer_version: 5,
+            accepted_global_passes: exchanges,
             final_rmse: rmse(&canvas, &target, &current),
             initial_rmse,
             settings: settings.clone(),
@@ -687,6 +739,40 @@ mod tests {
         let target = canvas.target(&source, &settings);
         assert_eq!(target[25 * 100 + 50], 0.0);
         assert_eq!(target[60 * 100 + 50], 1.0);
+    }
+
+    #[test]
+    fn global_removal_restores_one_continuous_path_with_the_exact_retained_chords() {
+        let settings = Settings {
+            anchors: 32,
+            raster_size: 64,
+            max_segments: 128,
+            ..Settings::default()
+        };
+        let canvas = Canvas::new(64, 600.0, 32);
+        let target = vec![0.0; 64 * 64];
+        let image = Objective::new(&canvas, &target, 0.0);
+        let lines = Lines::new(&canvas, &settings);
+        let scratch = vec![image.scratch()];
+        let mut search = Search {
+            canvas: &canvas,
+            lines: &lines,
+            target: &target,
+            settings: &settings,
+            image,
+            exact_after_bridge: false,
+            repeats: vec![0; lines.lines.len()],
+            scratch,
+        };
+        let id = lines.id(0, 16).unwrap();
+        let mut path: Vec<_> = (0..=128).map(|i| i % 2 * 16).collect();
+        for _ in 0..128 {
+            search.change(id, true);
+        }
+        assert!(search.exchange(&mut path, 0));
+        assert_eq!(path, [0, 16, 0]);
+        assert_eq!(search.repeats[id], 2);
+        assert_eq!(search.repeats.iter().sum::<u32>(), 2);
     }
 
     #[test]

@@ -4,6 +4,10 @@ use crate::{Lines, raster::Canvas};
 const CELL_SIDE: usize = 4;
 const TONE_WEIGHT: f64 = 0.85;
 
+pub(super) fn cell_index(x: usize, y: usize, size: usize) -> usize {
+    y / CELL_SIDE * size.div_ceil(CELL_SIDE) + x / CELL_SIDE
+}
+
 pub(super) struct Objective {
     pub current: Vec<f32>,
     cells: Vec<usize>,
@@ -12,6 +16,7 @@ pub(super) struct Objective {
     weights: Vec<f32>,
     neighbors: Vec<Vec<(usize, f32)>>,
     cell_weights: Vec<f64>,
+    target_means: Vec<f64>,
     inverse_counts: Vec<f64>,
     // Sum of target minus render within each cell, excluding the circular border.
     residual: Vec<f64>,
@@ -100,7 +105,7 @@ impl Objective {
         let mut residual = vec![0.0; counts.len()];
         let mut cells = Vec::with_capacity(target.len());
         for (index, &tone) in target.iter().enumerate() {
-            let cell = (index / canvas.size / CELL_SIDE) * cols + index % canvas.size / CELL_SIDE;
+            let cell = cell_index(index % canvas.size, index / canvas.size, canvas.size);
             cells.push(cell);
             if canvas.inside[index] {
                 counts[cell] += 1;
@@ -116,12 +121,29 @@ impl Objective {
             opaque: vec![0; target.len()],
             weights,
             neighbors,
+            target_means: residual
+                .iter()
+                .zip(&counts)
+                .map(|(sum, n)| sum / (*n).max(1) as f64)
+                .collect(),
             cell_weights,
             current: vec![0.0; target.len()],
             cells,
             residual,
             inverse_counts: counts.into_iter().map(|n| 1.0 / n.max(1) as f64).collect(),
         }
+    }
+
+    pub fn coarse_score(&self, cells: &[u32]) -> f64 {
+        cells
+            .iter()
+            .map(|&cell| {
+                let i = cell as usize;
+                let error = self.residual[i] * self.inverse_counts[i];
+                let transmission = 1.0 - self.target_means[i] + error;
+                self.cell_weights[i] * error * transmission
+            })
+            .sum()
     }
 
     pub fn scratch(&self) -> Scratch {

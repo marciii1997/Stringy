@@ -9,7 +9,7 @@ use std::{
 
 use clap::Parser;
 use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
-use stringy::{Settings, generate_with_ink};
+use stringy::{Settings, generate_with_ink, render_preview};
 
 #[derive(Parser)]
 #[command(
@@ -18,10 +18,17 @@ use stringy::{Settings, generate_with_ink};
 )]
 struct Args {
     /// JPEG, PNG, or WebP photo.
-    input: PathBuf,
+    #[arg(required_unless_present = "replay", conflicts_with = "replay")]
+    input: Option<PathBuf>,
+    /// Render a saved path.json to preview.png using the archived thread and anchors.
+    #[arg(long)]
+    replay: Option<PathBuf>,
     /// Optional RGB guidance PNG aligned with the final square raster.
     #[arg(long)]
     guide: Option<PathBuf>,
+    /// Replay the final path at 2048–4096 pixels and export a downsampled reference preview.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(64..=2048))]
+    preview_size: Option<u32>,
     /// Add darkness from this aligned grayscale mask after applying the RGB guide.
     #[arg(long, requires = "guide")]
     background_ink: Option<PathBuf>,
@@ -80,6 +87,22 @@ struct Args {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
+    if let Some(path) = args.replay {
+        #[derive(serde::Deserialize)]
+        struct Winding {
+            settings: Settings,
+            path: Vec<usize>,
+        }
+        let saved: Winding = serde_json::from_reader(File::open(path)?)?;
+        let preview = render_preview(
+            &saved.settings,
+            &saved.path,
+            args.preview_size.unwrap_or(1024),
+        )?;
+        fs::create_dir_all(&args.output)?;
+        preview.save(args.output.join("preview.png"))?;
+        return Ok(());
+    }
     let settings = Settings {
         anchors: args.anchors,
         diameter_mm: args.diameter_mm,
@@ -103,7 +126,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         repeat_penalty: args.repeat_penalty,
         cache_mib: args.cache_mib,
     };
-    let mut reader = ImageReader::open(args.input)?.with_guessed_format()?;
+    let mut reader =
+        ImageReader::open(args.input.expect("photo or replay required"))?.with_guessed_format()?;
     let mut limits = Limits::default();
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
@@ -144,7 +168,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     fs::create_dir_all(&args.output)?;
     art.target.save(args.output.join("target.png"))?;
-    art.preview.save(args.output.join("preview.png"))?;
+    let preview = match args.preview_size {
+        Some(size) => render_preview(&settings, &art.route.path, size)?,
+        None => art.preview,
+    };
+    preview.save(args.output.join("preview.png"))?;
     let mut json = BufWriter::new(File::create(args.output.join("path.json"))?);
     serde_json::to_writer_pretty(&mut json, &art.route)?;
     writeln!(json)?;

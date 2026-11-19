@@ -170,3 +170,56 @@ class WorkerTests(TestCase):
         active.refresh_from_db()
         self.assertEqual(stale.state, "failed")
         self.assertEqual(active.state, "running")
+
+
+class QualityTests(TestCase):
+    def test_reference_measure_distinguishes_a_spatially_wrong_image(self):
+        from .motif import encoded
+        from .quality import view_quality
+
+        target = Image.new("L", (128, 128), 255)
+        target.paste(0, (30, 40, 55, 80))
+        wrong = target.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        target_png = encoded(target, "PNG")
+        exact = view_quality(target_png, target_png)
+        shifted = view_quality(target_png, encoded(wrong, "PNG"))
+        self.assertAlmostEqual(exact["ssim"], 1, places=5)
+        self.assertEqual(exact["tone_rmse"], 0)
+        self.assertLess(shifted["ssim"], exact["ssim"])
+        self.assertGreater(shifted["tone_rmse"], 0)
+
+    def test_worker_selects_the_better_reference_and_preserves_it_after_replay(self):
+        import json
+        from pathlib import Path
+
+        from .management.commands.process_art import process_one
+        from .motif import encoded
+
+        good = encoded(Image.new("L", (64, 64), 120), "PNG")
+        bad = encoded(Image.new("L", (64, 64), 20), "PNG")
+        old = Artwork.objects.create(
+            title="Alt", source=good, state="ready", route={"settings": {}, "path": [0, 8]}
+        )
+        art = Artwork.objects.create(title="Neu", source=good, previous=old)
+
+        def simulate(command, deadline, renew):
+            folder = Path(command[command.index("--output") + 1])
+            if "--replay" in command:
+                (folder / "preview.png").write_bytes(bad)
+            else:
+                size = int(command[command.index("--raster-size") + 1])
+                (folder / "target.png").write_bytes(good)
+                (folder / "preview.png").write_bytes(good if size == 512 else bad)
+                (folder / "path.json").write_text(
+                    json.dumps({"settings": {"raster_size": size}, "path": [0, 9]})
+                )
+            return True
+
+        with patch("studio.management.commands.process_art.run_optimizer", side_effect=simulate):
+            self.assertTrue(process_one())
+        art.refresh_from_db()
+        self.assertEqual(art.state, "ready")
+        self.assertEqual(art.route["settings"]["raster_size"], 512)
+        self.assertEqual(art.preview, good)
+        self.assertEqual([r["raster"] for r in art.route["quality_trials"]], [512, 1024])
+        self.assertGreater(art.route["view_quality"]["ssim"], art.route["previous_quality"]["ssim"])

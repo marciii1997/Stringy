@@ -48,6 +48,7 @@ class Artwork(models.Model):
     gamma = models.FloatField(
         "Helligkeit (Gamma)", default=1, validators=[MinValueValidator(0.3), MaxValueValidator(3)]
     )
+    quality_search = models.BooleanField("Qualitätsvergleich mit feinem Rechenraster", default=True)
     passes = models.PositiveSmallIntegerField(
         "Nachbesserungsrunden", default=3, validators=[MaxValueValidator(12)]
     )

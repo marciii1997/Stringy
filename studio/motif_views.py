@@ -50,7 +50,12 @@ class MixForm(forms.Form):
     pad = forms.BooleanField(label="Ausschnitt über den Bildrand hinaus erlauben", required=False)
     strokes = forms.JSONField(widget=forms.HiddenInput, required=False)
     action = forms.ChoiceField(
-        choices=[("single", "Variante"), ("compare", "Vergleich"), ("styles", "Stilvergleich")]
+        choices=[
+            ("single", "Variante"),
+            ("compare", "Vergleich"),
+            ("styles", "Stilvergleich"),
+            ("threads", "Fadenstärkenvergleich"),
+        ]
     )
 
     def clean_strokes(self):
@@ -95,29 +100,34 @@ def editor(request, pk):
         values = mix.cleaned_data
         action = values["action"]
         group = None if action == "single" else uuid.uuid4()
-        if action == "styles":
-            variants = [("custom", style) for style in STYLES]
+        style = values["style"] or "natural"
+        thread = calc.cleaned_data["thread"]
+        if action == "threads":
+            variants = [("threads", style, width) for width in (0.15, 0.25)]
+        elif action == "styles":
+            variants = [("styles", name, thread) for name in STYLES]
         else:
             profiles = PROFILES if action == "compare" else ("custom",)
-            variants = [
-                (name, (values["style"] or "natural") if name == "custom" else "natural")
-                for name in profiles
-            ]
+            variants = [(name, style if name == "custom" else "natural", thread) for name in profiles]
         source = art.source
         with transaction.atomic():
-            for name, style in variants:
-                _, active = PROFILES[name]
+            for name, style, width in variants:
+                _, active = PROFILES.get(name, PROFILES["custom"])
                 prep = {k: values[k] if k in active else 0 for k in DEFAULTS}
                 if "background" in active:
                     prep["background_color"] = values["background_color"] or "white"
                 prep.update(
                     style=style,
-                    profile="styles" if action == "styles" else name,
+                    profile=name,
                     strokes=values["strokes"],
                     pad=values["pad"],
                 )
                 variant = Artwork.objects.create(
-                    **calc.cleaned_data, previous=art, source=source, preparation=prep, comparison=group
+                    **{**calc.cleaned_data, "thread": width},
+                    previous=art,
+                    source=source,
+                    preparation=prep,
+                    comparison=group,
                 )
         return redirect("comparison", group=group) if group else redirect("simulation", pk=variant.pk)
     with Image.open(BytesIO(analysis.photo)) as photo:
@@ -150,14 +160,19 @@ def editor(request, pk):
 def comparison(request, group):
     variants = list(
         Artwork.objects.filter(comparison=group)
-        .only("title", "state", "count", "preparation", "previous_id")
+        .only("title", "state", "count", "thread", "preparation", "previous_id")
         .order_by("pk")
     )
     if not variants:
         raise Http404
     for art in variants:
         profile = art.preparation["profile"]
-        art.label = STYLES[art.preparation["style"]] if profile == "styles" else PROFILES[profile][0]
+        if profile == "threads":
+            art.label = f"{art.thread:g} mm".replace(".", ",")
+        elif profile == "styles":
+            art.label = STYLES[art.preparation["style"]]
+        else:
+            art.label = PROFILES[profile][0]
     return render(
         request,
         "studio/comparison.html",

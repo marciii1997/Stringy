@@ -22,7 +22,7 @@ Der Optimierer bewertet in jedem Schritt die vom aktuellen Anker ausgehenden
 Sehnen parallel. Er wählt anhand des quadrierten Graustufenfehlers und einer
 kleinen Strafe für wiederholte Sehnen. Der Helligkeitsgewinn berücksichtigt,
 dass weitere Fäden über bereits dunklen Stellen weniger verändern.
-Optimierer 2 bewertet einzelne Pixel und die mittlere Helligkeit in 4 × 4
+Der Optimierer bewertet einzelne Pixel und die mittlere Helligkeit in 4 × 4
 Pixel großen Bereichen. Das Detailgewicht priorisiert lokale Kontraste.
 An einer Sackgasse prüft er ausgewählte Verbindungen mit einem zweiten Zug
 voraus. Standardmäßig versetzt er in bis zu drei Nachbesserungsrunden frühere Anker der
@@ -157,6 +157,45 @@ Gamma unter 1 hellt die Mitteltöne auf. Verwende für die Fadenstärke den
 Durchmesser deines tatsächlichen Fadens. Der Download von JSON und SVG gehört
 immer zur gerade geöffneten Berechnung.
 
+### Rekonstruktionsqualität und Referenzvorschau
+
+Optimierer 5 verwendet zunächst einen durchgehenden Pfad. Bei der Nachbesserung darf er
+Verbindungen zwischen beliebigen Randnägeln hinzufügen und früher gewählte Verbindungen
+entfernen. Ein Spannbaum hält das Netz zusammen. Der Solver repariert ungerade Knotengrade
+durch zulässige Verbindungen oder Entnahmen und ordnet die Linien zu einem Eulerpfad.
+Er übernimmt den Austausch nur, wenn einschließlich dieser Reparatur die gewichtete
+Fehlerfunktion sinkt und alle Verbindungen ins Budget passen. Start, Ende und Ankerabstände
+bleiben dabei gültig. Bei sehr kurzen Pfaden nutzt er die lokale Ankerkorrektur.
+
+**Qualitätsvergleich mit feinem Rechenraster** berechnet im Webatelier zwei Kandidaten
+mit gleicher Geometrie bei 512 und 1024 Pixeln. Beim feinen Raster schätzt der Solver
+die aussichtsreichsten Sehnen über 48 Stützstellen und prüft bis zu 64 davon im genauen
+Fadenmodell. Vor einem Suchstopp prüft er auch die übrigen erreichbaren Sehnen.
+
+Für beide Vorschauen zeichnet der Worker die tatsächlich exportierte Ankerfolge bei
+2048 × 2048 Pixeln mit Fadenbreite und Deckkraft nach und verkleinert sie auf 1024 Pixel.
+Für den Vergleich bringt er beide Ergebnisse auf die gemeinsame 512-Pixel-Vorlage und
+glättet sie mit einem Gaußfilter (σ = 2 Pixel). Er misst SSIM und die Wurzel aus dem mittleren
+quadratischen Tonwertfehler (RMSE) innerhalb von 95 % des Kreisradius. Markierte Fokusbereiche
+erhalten höheres Gewicht. Es gewinnt der höhere Wert von **SSIM minus RMSE**, bei
+Gleichstand der kürzere Pfad nach Verbindungszahl. Die Simulation zeigt beide Einzelwerte.
+Bei einer Neuberechnung mit gleicher Geometrie und Deckkraft wird ein vorhandener
+Vorgängerpfad zum Vergleich ebenfalls gegen die aktuelle Vorlage gemessen.
+
+Mit **0,15 und 0,25 mm vergleichen** im Motiv-Editor erhältst du zwei eigene Simulationen
+mit demselben Motiv und unterschiedlichen realen Fadendurchmessern. In den Kalender
+gehört der Pfad für den Faden, den du tatsächlich verwendest.
+
+Die Deckkraft und der Fadendurchmesser stammen aus den Motiveinstellungen. Ein Foto
+einer real gefädelten Probe unter vergleichbarem Licht wird für eine Materialkalibrierung benötigt.
+Für einen schnellen Entwurf lässt sich der zweite Rechenlauf im Formular ausschalten.
+
+Einen früher exportierten Pfad kann die CLI mit demselben Referenzrenderer erneut darstellen:
+
+```sh
+cargo run --locked --release -- --replay output/path.json --preview-size 1024 --output vergleich
+```
+
 ### Bestehende Docker-Installation auf dem PC aktualisieren
 
 Öffne das Terminal im bisherigen Projektordner mit deiner `.env` und der
@@ -173,7 +212,7 @@ docker compose ps -a
 Der Dienst `migrate` sollte mit `Exited (0)` enden, `web` und `worker` sollten
 laufen. Compose verwendet im gleichen Projekt das vorhandene Datenvolume.
 Öffne `http://localhost:8000` und melde dich mit deinem bisherigen Admin-Konto an.
-Neue Ergebnisse zeigen **Optimierer 2**. Bei Problemen zeigt
+Neue Ergebnisse zeigen **Optimierer 5**. Bei Problemen zeigt
 `docker compose logs --tail=80 migrate web worker` die Startmeldungen.
 
 ## Motive vorbereiten und Fadenpfade vergleichen

@@ -124,6 +124,16 @@ class MotifTests(TestCase):
         self.assertEqual(guide.getpixel((99, 99))[1], 0)
         self.assertEqual(Image.open(BytesIO(self.analysis.masks)).getbbox(), None)
 
+    def test_thread_comparison_keeps_the_same_motif_and_uses_real_widths(self):
+        self.client.force_login(self.admin)
+        data = {**self.data(), "action": "threads", "style": "smooth", "background_color": "gradient"}
+        result = self.client.post(reverse("motif", args=[self.art.pk]), data)
+        variants = list(Artwork.objects.filter(previous=self.art).order_by("thread"))
+        self.assertEqual([a.thread for a in variants], [0.15, 0.25])
+        self.assertEqual(variants[0].preparation, variants[1].preparation)
+        self.assertEqual(variants[0].preparation["style"], "smooth")
+        self.assertContains(self.client.get(result.url), "0,15 mm")
+
     def test_style_comparison_only_changes_the_foreground_style(self):
         self.client.force_login(self.admin)
         strokes = [{"layer": "subject", "radius": 0.1, "points": [[0.5, 0.5]]}]

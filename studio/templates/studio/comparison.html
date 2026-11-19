@@ -3,7 +3,7 @@
 {% block content %}
 {% if first.previous_id %}<a href="{% url 'simulation' first.previous_id %}">← {{ first.title }}</a>{% endif %}
 <h1>Variantenvergleich</h1>
-<p>Alle Fadenpfade verwenden denselben Ausschnitt, Faden und Ankerkreis. Öffne eine Simulation für die Detailansicht.</p>
+<p>{% if first.preparation.profile == "threads" %}Beide Varianten verwenden denselben Ausschnitt und Ankerkreis. Wähle für den Bau die Variante mit der Stärke deines Fadens.{% else %}Alle Fadenpfade verwenden denselben Ausschnitt, Faden und Ankerkreis.{% endif %} Öffne eine Simulation für die Detailansicht.</p>
 <div class="motif-results">
 {% for art in variants %}
 <section><h2>{{ art.label }}</h2>
