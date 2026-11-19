@@ -108,3 +108,32 @@ Fehlgeschlagene Motive lassen sich in der Motivliste erneut einreihen.
 ```sh
 docker compose exec web python manage.py test studio
 ```
+
+### Canvas mit dem Laser vorbereiten
+
+Öffne im Atelier ein berechnetes Motiv und wähle **Canvas für den Laser
+vorbereiten**. Die SVG enthält die Ankerpositionen aus dem berechneten Pfad
+in Originalgröße. Anker 0 liegt auf 12 Uhr, die Nummerierung läuft im
+Uhrzeigersinn. Die Beschriftung besteht aus Vektorlinien und kann für alle
+Anker, in Zehnerschritten, nur für den Start oder ganz ohne Nummern exportiert werden.
+
+Der Durchmesser in der Motivberechnung bezeichnet den **Ankerkreis**. Für ein
+rundes Werkstück mit Ø 600 mm und 5 mm Abstand zwischen Ankerzentrum und
+Werkstückkante wähle bei der Motivberechnung **590 mm**. Ein bestehendes Motiv
+mit 600-mm-Ankerkreis ergibt mit demselben Rand ein Werkstück mit Ø 610 mm.
+
+[Beispieldatei für ein Werkstück mit Ø 600 mm, 360 Ankern und 5 mm Rand](examples/laser/anker-360-werkstueck-600mm.svg)
+
+Die Voreinstellung erzeugt 1 mm breite Markierungskreuze und Gravurnummern.
+Alternativ lassen sich kreisförmige Lochkonturen mit wählbarem Nenndurchmesser
+erzeugen. Die kreisförmige Außenkontur wird auf Wunsch als eigene Farbe ergänzt.
+Importiere die SVG mit 100 % Maßstab. Ordne Schwarz (Markierung), Blau (Nummern),
+Rot (Löcher) und Grün (Außenkontur) im Laserprogramm den Bearbeitungsschritten zu.
+Beim Einrichten der Lochgröße die Schnittfuge für das eigene Material berücksichtigen.
+
+### Nach einer Fädelpause weitermachen
+
+Im nächsten offenen Türchen zeigt **Fädelmodus** den aktuellen und den nächsten
+Anker. **Verbindung gefädelt** speichert einen Schritt im Konto, **Einen Schritt
+zurück** korrigiert ihn. Nach einem Gerätewechsel öffnet sich der gespeicherte Stand.
+Der Vorschau-Schieberegler lässt sich unabhängig davon bewegen.
