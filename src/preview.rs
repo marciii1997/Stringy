@@ -18,7 +18,7 @@ pub fn render_preview(
     }
     let fine = (size as usize * 2).max(2048);
     let canvas = Canvas::for_settings(fine, settings);
-    let width = settings.thread_mm / settings.diameter_mm * (fine - 1) as f64;
+    let width = settings.thread_px(fine);
     let mut darkness = vec![0.0; fine * fine];
     for pair in path.windows(2) {
         canvas.rasterize(canvas.points[pair[0]], canvas.points[pair[1]], width, |s| {
@@ -26,10 +26,11 @@ pub fn render_preview(
             *value += (1.0 - *value) * s.coverage * settings.opacity;
         });
     }
+    let [w, h] = settings.pixels(size as usize);
     Ok(imageops::resize(
         &canvas.render(&darkness),
-        size,
-        size,
+        w as u32,
+        h as u32,
         imageops::FilterType::Lanczos3,
     ))
 }

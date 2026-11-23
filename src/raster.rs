@@ -21,6 +21,8 @@ pub(crate) struct Canvas {
     pub points: Vec<Point>,
     pub inside: Vec<bool>,
     pub size: usize,
+    pub width: usize,
+    pub height: usize,
 }
 
 impl Canvas {
@@ -38,29 +40,62 @@ impl Canvas {
 
     pub fn for_settings(size: usize, settings: &crate::Settings) -> Self {
         let anchor_count = settings.anchors;
-        let diameter_mm = settings.diameter_mm;
+        let [w, h] = settings.field_mm();
+        let [width, height] = settings.pixels(size);
+        let mut sides = [1usize; 4];
+        if settings.rectangle_mm.is_some() && settings.nail_positions.is_empty() {
+            // Split the longest remaining interval, including each corner exactly once.
+            for _ in 4..anchor_count {
+                let lengths = [w, h, w, h];
+                let mut side = 0;
+                for i in 1..4 {
+                    if lengths[i] / sides[i] as f64 > lengths[side] / sides[side] as f64 {
+                        side = i;
+                    }
+                }
+                sides[side] += 1;
+            }
+        }
         let radius_px = (size - 1) as f64 / 2.0;
-        let radius_mm = diameter_mm / 2.0;
+
         let mut anchors = Vec::with_capacity(anchor_count);
         let mut points = Vec::with_capacity(anchor_count);
         for id in 0..anchor_count {
             let [x, y] = settings.nail_positions.get(id).copied().unwrap_or_else(|| {
+                if settings.rectangle_mm.is_some() {
+                    let mut k = id;
+                    for (side, &n) in sides.iter().enumerate() {
+                        if k < n {
+                            let t = 2.0 * k as f64 / n as f64 - 1.0;
+                            return match side {
+                                0 => [t, -1.0],
+                                1 => [1.0, t],
+                                2 => [-t, 1.0],
+                                _ => [-1.0, -t],
+                            };
+                        }
+                        k -= n;
+                    }
+                }
                 let angle = TAU * id as f64 / anchor_count as f64 - FRAC_PI_2;
                 let (y, x) = angle.sin_cos();
                 [x, y]
             });
             anchors.push(Anchor {
                 id,
-                x_mm: x * radius_mm,
-                y_mm: y * radius_mm,
+                x_mm: x * w / 2.0,
+                y_mm: y * h / 2.0,
             });
             points.push(Point {
-                x: radius_px * (1.0 + x),
-                y: radius_px * (1.0 + y),
+                x: (width - 1) as f64 / 2.0 * (1.0 + x),
+                y: (height - 1) as f64 / 2.0 * (1.0 + y),
             });
         }
         let inside = (0..size * size)
             .map(|pixel| {
+                if settings.rectangle_mm.is_some() {
+                    return pixel % size < width && pixel / size < height;
+                }
                 let x = (pixel % size) as f64 - radius_px;
                 let y = (pixel / size) as f64 - radius_px;
                 x * x + y * y <= radius_px * radius_px
@@ -71,6 +106,8 @@ impl Canvas {
             points,
             inside,
             size,
+            width,
+            height,
         }
     }
 
@@ -81,11 +118,12 @@ impl Canvas {
             let alpha = u32::from(rgba[3]);
             *dest = Luma([((luma * alpha + 255 * (255 - alpha) + 127) / 255) as u8]);
         }
-        let crop_size = (f64::from(gray.width().min(gray.height())) / settings.zoom)
-            .round()
-            .max(1.0) as u32;
+        let [w_mm, h_mm] = settings.field_mm();
+        let scale =
+            (f64::from(gray.width()) / w_mm).min(f64::from(gray.height()) / h_mm) / settings.zoom;
+        let crop = |side: f64| (side * scale).round().max(1.0) as u32;
         let size = self.size as u32;
-        let axis = |length: u32, center: f64| {
+        let axis = |length: u32, center: f64, crop_size: u32, pixels: usize| {
             let wanted =
                 (f64::from(length) * center / 100.0 - f64::from(crop_size) / 2.0).floor() as i64;
             let offset = if settings.pad_crop || settings.zoom < 1.0 {
@@ -96,11 +134,11 @@ impl Canvas {
             let start = offset.max(0);
             let end = (offset + i64::from(crop_size)).min(i64::from(length));
             let pixel =
-                |p| ((p - offset) as f64 * f64::from(size) / f64::from(crop_size)).round() as u32;
+                |p| ((p - offset) as f64 * pixels as f64 / f64::from(crop_size)).round() as u32;
             (start as u32, (end - start) as u32, pixel(start), pixel(end))
         };
-        let (x, w, left, right) = axis(gray.width(), settings.center_x);
-        let (y, h, top, bottom) = axis(gray.height(), settings.center_y);
+        let (x, w, left, right) = axis(gray.width(), settings.center_x, crop(w_mm), self.width);
+        let (y, h, top, bottom) = axis(gray.height(), settings.center_y, crop(h_mm), self.height);
         let mut raster = GrayImage::from_pixel(size, size, Luma([255]));
         if right > left && bottom > top && w > 0 && h > 0 {
             let crop = image::imageops::crop_imm(&gray, x, y, w, h);
@@ -126,11 +164,17 @@ impl Canvas {
     }
 
     pub fn render(&self, darkness: &[f32]) -> GrayImage {
+        self.render_area(darkness, self.width, self.height)
+    }
+
+    pub fn render_area(&self, darkness: &[f32], width: usize, height: usize) -> GrayImage {
         let pixels = darkness
-            .iter()
+            .chunks_exact(self.size)
+            .take(height)
+            .flat_map(|row| row[..width].iter())
             .map(|&value| ((1.0 - value).clamp(0.0, 1.0) * 255.0).round() as u8)
             .collect();
-        GrayImage::from_raw(self.size as u32, self.size as u32, pixels)
+        GrayImage::from_raw(width as u32, height as u32, pixels)
             .expect("darkness buffer matches canvas size")
     }
 

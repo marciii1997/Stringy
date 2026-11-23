@@ -48,7 +48,7 @@ class LaserForm(forms.Form):
     )
     outline = forms.BooleanField(label="Außenkreis als Schnittkontur hinzufügen", required=False)
 
-    def __init__(self, *args, diameter, count, free_anchors=None, **kwargs):
+    def __init__(self, *args, diameter, count, free_anchors=None, rectangle=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.pitch = (
             min(nearest_spacing(a, free_anchors) for a in free_anchors)
@@ -59,6 +59,13 @@ class LaserForm(forms.Form):
             max(0, diameter / 2 - max(math.hypot(a["x_mm"], a["y_mm"]) for a in free_anchors))
             if free_anchors else 0
         )
+        if rectangle:
+            fw, fh = rectangle
+            self.inset = min((min(fw/2 - abs(a["x_mm"]), fh/2 - abs(a["y_mm"]))
+                              for a in (free_anchors or [])), default=0)
+            self.fields["margin_mm"].disabled = True
+            self.fields["margin_mm"].label = "Abstand vom Nagelfeld zur Werkstückkante (mm)"
+            self.fields["outline"].label = "Rechteckige Außenkante als Schnittkontur hinzufügen"
         self.fields["feature_mm"].initial = min(1, round(self.pitch * 0.6, 2))
 
     def clean(self):
@@ -71,7 +78,7 @@ class LaserForm(forms.Form):
             )
         if width is not None and margin is not None and self.inset + float(margin) <= float(width) / 2:
             self.add_error(
-                "margin_mm",
+                "feature_mm" if self.fields["margin_mm"].disabled else "margin_mm",
                 "Der Abstand zur Außenkante muss größer als die halbe Kreuzbreite bzw. der Lochradius sein.",
             )
         return data
@@ -119,15 +126,17 @@ def number_path(number, x, y, scale):
 def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
     diameter = route["settings"]["diameter_mm"]
     anchors = route["anchors"]
-    span = diameter + 2 * float(margin_mm)
-    center = span / 2
+    rectangle = route["settings"].get("rectangle_mm")
+    fw, fh = rectangle or (diameter, diameter)
+    width, height = fw + 2 * float(margin_mm), fh + 2 * float(margin_mm)
+    cx, cy = width / 2, height / 2
     half = float(feature_mm) / 2
     root = ET.Element(
         "svg",
         xmlns="http://www.w3.org/2000/svg",
-        width=f"{span:g}mm",
-        height=f"{span:g}mm",
-        viewBox=f"0 0 {span:g} {span:g}",
+        width=f"{width:g}mm",
+        height=f"{height:g}mm",
+        viewBox=f"0 0 {width:g} {height:g}",
         fill="none",
     )
 
@@ -149,13 +158,13 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
         if labels == "all" or a["id"] == 0 or (labels == "ten" and a["id"] % 10 == 0)
     ]
     scale = 1.1
-    free = bool(route["settings"].get("nail_positions"))
+    free = bool(rectangle or route["settings"].get("nail_positions"))
     if not free and len(numbered) > 1:
         gap = min(numbered[1], len(anchors) - numbered[-1])
         scale = min(scale, 2 * label_radius * math.sin(math.pi * gap / len(anchors)) / 5.5)
     for anchor in anchors:
         dx, dy = anchor["x_mm"], anchor["y_mm"]
-        x, y = center + dx, center + dy
+        x, y = cx + dx, cy + dy
         anchor_id = f"anker-{anchor['id']}"
         if holes:
             ET.SubElement(
@@ -175,8 +184,8 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
             )
         if numbers is not None and anchor["id"] in numbered:
             label_x, label_y = (
-                center + dx * label_radius / radius,
-                center + dy * label_radius / radius,
+                cx + dx * label_radius / radius,
+                cy + dy * label_radius / radius,
             )
             label_scale = scale
             if free:
@@ -199,12 +208,10 @@ def laser_svg(route, mode, feature_mm, margin_mm, labels, outline=False):
                 ),
             )
     if outline:
-        ET.SubElement(
-            layer("aussenkontur", "#00ff00"),
-            "circle",
-            cx=f"{center:g}",
-            cy=f"{center:g}",
-            r=f"{center:g}",
-        )
+        border = layer("aussenkontur", "#00ff00")
+        if rectangle:
+            ET.SubElement(border, "rect", width=f"{width:g}", height=f"{height:g}")
+        else:
+            ET.SubElement(border, "circle", cx=f"{cx:g}", cy=f"{cy:g}", r=f"{cx:g}")
     ET.indent(root)
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)

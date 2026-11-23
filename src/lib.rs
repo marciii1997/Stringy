@@ -25,11 +25,18 @@ const MIN_GAIN: f64 = 1e-8;
 #[serde(default)]
 pub struct Settings {
     pub anchors: usize,
-    /// Coordinates relative to the canvas radius, positive y down. Empty selects the ring.
+    /// Coordinates normalized by each half-extent, positive y down. Empty selects the perimeter.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub nail_positions: Vec<[f64; 2]>,
     pub base_ring: usize,
     pub diameter_mm: f64,
+    /// Width and height of the nail field in mm. Rectangular nail coordinates are
+    /// normalized per axis, from [-1,-1] at top left to [1,1] at bottom right.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rectangle_mm: Option<[f64; 2]>,
+    /// Equal shaft diameters. None retains the geometric centreline search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shaft_mm: Option<f64>,
     pub thread_mm: f64,
     pub opacity: f32,
     pub detail: f32,
@@ -54,6 +61,8 @@ impl Default for Settings {
             nail_positions: Vec::new(),
             base_ring: 0,
             diameter_mm: 600.0,
+            rectangle_mm: None,
+            shaft_mm: None,
             thread_mm: 0.25,
             opacity: 1.0,
             detail: 1.0,
@@ -85,9 +94,32 @@ impl fmt::Display for InvalidInput {
 impl std::error::Error for InvalidInput {}
 
 impl Settings {
+    fn field_mm(&self) -> [f64; 2] {
+        self.rectangle_mm.unwrap_or([self.diameter_mm; 2])
+    }
+
+    fn thread_px(&self, size: usize) -> f64 {
+        let [w, h] = self.field_mm();
+        self.thread_mm / w.max(h) * (size - 1) as f64
+    }
+
+    fn pixels(&self, size: usize) -> [usize; 2] {
+        let [w, h] = self.field_mm();
+        [w, h].map(|side| (1 + ((size - 1) as f64 * side / w.max(h)).round() as usize).max(2))
+    }
+
     fn validate(&self) -> Result<(), InvalidInput> {
         if !(3..=720).contains(&self.anchors) {
             return Err(InvalidInput("anchors must be between 3 and 720"));
+        }
+        if let Some(dims) = self.rectangle_mm
+            && (dims.iter().any(|v| !(1.0..=100000.0).contains(v))
+                || (self.nail_positions.is_empty() && self.anchors < 4))
+        {
+            return Err(InvalidInput("invalid rectangular nail field"));
+        }
+        if self.shaft_mm.is_some_and(|d| !(0.1..=10.0).contains(&d)) {
+            return Err(InvalidInput("shaft diameter must be 0.1–10 mm"));
         }
         if self.base_ring != 0
             && (!(3..=self.nail_positions.len()).contains(&self.base_ring)
@@ -100,7 +132,14 @@ impl Settings {
                 return Err(InvalidInput("anchor count disagrees with nail positions"));
             }
             for (i, &[x, y]) in self.nail_positions.iter().enumerate() {
-                if !x.is_finite() || !y.is_finite() || x.hypot(y) > 1.0 + 1e-12 {
+                if !x.is_finite()
+                    || !y.is_finite()
+                    || (if self.rectangle_mm.is_some() {
+                        x.abs().max(y.abs())
+                    } else {
+                        x.hypot(y)
+                    }) > 1.0 + 1e-12
+                {
                     return Err(InvalidInput("nail outside canvas"));
                 }
                 if self.nail_positions[..i]
@@ -122,7 +161,8 @@ impl Settings {
             ));
         }
         if !self.thread_mm.is_finite()
-            || !(0.001..=self.diameter_mm / 10.0).contains(&self.thread_mm)
+            || !(0.001..=self.field_mm()[0].min(self.field_mm()[1]) / 10.0)
+                .contains(&self.thread_mm)
         {
             return Err(InvalidInput(
                 "thread diameter must be between 0.001 mm and one tenth of the canvas diameter",
@@ -239,8 +279,8 @@ struct Lines {
 }
 
 // A direct winding step cannot pass through the center of an intervening nail.
-// Coordinates use the unit radius; the tolerance only covers rounding at collinearity.
-fn crosses_intermediate_nail(pins: &[[f64; 2]], from: usize, to: usize) -> bool {
+// With physical clearance, protect both possible external tangent directions and endpoints.
+fn crosses_intermediate_nail(pins: &[[f64; 2]], from: usize, to: usize, clearance: f64) -> bool {
     if pins.is_empty() {
         return false;
     }
@@ -248,7 +288,7 @@ fn crosses_intermediate_nail(pins: &[[f64; 2]], from: usize, to: usize) -> bool 
     let dx = pins[to][0] - x;
     let dy = pins[to][1] - y;
     let length_sq = dx * dx + dy * dy;
-    let tolerance = 1e-10 * length_sq.sqrt();
+    let tolerance = clearance.max(1e-10) * length_sq.sqrt();
     pins.iter().enumerate().any(|(i, p)| {
         if i == from || i == to {
             return false;
@@ -256,13 +296,19 @@ fn crosses_intermediate_nail(pins: &[[f64; 2]], from: usize, to: usize) -> bool 
         let px = p[0] - x;
         let py = p[1] - y;
         let along = px * dx + py * dy;
-        along > 0. && along < length_sq && (px * dy - py * dx).abs() <= tolerance
+        if along <= 0.0 {
+            return px * px + py * py < clearance * clearance;
+        }
+        if along >= length_sq {
+            return (px - dx).powi(2) + (py - dy).powi(2) < clearance * clearance;
+        }
+        (px * dy - py * dx).abs() <= tolerance
     })
 }
 
 impl Lines {
     fn new(canvas: &Canvas, settings: &Settings) -> Self {
-        let width_px = settings.thread_mm / settings.diameter_mm * (canvas.size - 1) as f64;
+        let width_px = settings.thread_px(canvas.size);
         let sample_capacity = settings.cache_mib * MIB / size_of::<Sample>();
         let mut lines = Vec::new();
         let mut moves = vec![Vec::new(); settings.anchors];
@@ -275,13 +321,36 @@ impl Lines {
         } else {
             1
         };
+        let generated;
+        // Radius to the wound thread centre plus the foreign shaft and thread radii;
+        // reserve another 0.5 mm for positioning. All distances below are in mm.
+        let clearance = settings
+            .shaft_mm
+            .map_or(0.0, |d| d + settings.thread_mm + 0.5);
+        let obstacles = if settings.rectangle_mm.is_some() || settings.shaft_mm.is_some() {
+            generated = canvas
+                .anchors
+                .iter()
+                .map(|a| [a.x_mm, a.y_mm])
+                .collect::<Vec<_>>();
+            &generated
+        } else {
+            &settings.nail_positions
+        };
         for from in 0..settings.anchors {
             for to in from + gap..settings.anchors {
                 let skip_ring_pair = to < settings.base_ring
                     && (to - from).min(settings.base_ring - (to - from)) < settings.min_anchor_gap;
                 if skip_ring_pair
                     || settings.anchors - (to - from) < gap
-                    || crosses_intermediate_nail(&settings.nail_positions, from, to)
+                    || crosses_intermediate_nail(obstacles, from, to, clearance)
+                {
+                    continue;
+                }
+                if clearance > 0.0
+                    && (canvas.anchors[to].x_mm - canvas.anchors[from].x_mm)
+                        .hypot(canvas.anchors[to].y_mm - canvas.anchors[from].y_mm)
+                        < clearance
                 {
                     continue;
                 }
@@ -578,27 +647,31 @@ pub fn generate_with_ink(
     }
     settings.validate()?;
     let canvas = Canvas::for_settings(settings.raster_size, settings);
+    // The objective uses square tiles internally. Align the rectangular input
+    // maps to that stride, keeping the unused pixels outside the canvas mask.
+    let dims = (canvas.width as u32, canvas.height as u32);
+    if guide.is_some_and(|im| im.dimensions() != dims)
+        || background_ink.is_some_and(|im| im.dimensions() != dims)
+    {
+        return Err(InvalidInput("guidance must match the nail field raster"));
+    }
+    let padded_guide = guide.filter(|_| dims.0 != dims.1).map(|map| {
+        let mut square = image::RgbImage::new(canvas.size as u32, canvas.size as u32);
+        image::imageops::replace(&mut square, map, 0, 0);
+        square
+    });
+    let guide = padded_guide.as_ref().or(guide);
     let mut target = canvas.target(source, settings);
     if let Some(map) = guide {
-        let size = canvas.size as u32;
-        if map.dimensions() != (size, size) {
-            return Err(InvalidInput(
-                "guide must match optimization raster dimensions",
-            ));
-        }
         for (tone, p) in target.iter_mut().zip(map.pixels()) {
             *tone *= 1.0 - f32::from(p[0]) / 255.0;
         }
     }
     if let Some(ink) = background_ink {
-        if ink.dimensions() != (canvas.size as u32, canvas.size as u32) {
-            return Err(InvalidInput(
-                "background ink must match optimization raster dimensions",
-            ));
-        }
-        for ((tone, p), &inside) in target.iter_mut().zip(ink.pixels()).zip(&canvas.inside) {
-            if inside {
-                *tone = (*tone + f32::from(p[0]) / 255.0).min(1.0);
+        for (x, y, p) in ink.enumerate_pixels() {
+            let i = y as usize * canvas.size + x as usize;
+            if canvas.inside[i] {
+                target[i] = (target[i] + f32::from(p[0]) / 255.0).min(1.0);
             }
         }
     }
@@ -692,6 +765,58 @@ pub fn generate_with_ink(
 mod tests {
     use super::*;
     use image::{Luma, Rgba, RgbaImage};
+
+    #[test]
+    fn rectangle_covers_corners_and_replays_at_physical_aspect() {
+        for dims in [[200., 100.], [100., 200.], [100., 100.]] {
+            let settings = Settings {
+                rectangle_mm: Some(dims),
+                shaft_mm: Some(1.2),
+                raster_size: 65,
+                anchors: 27,
+                passes: 1,
+                max_segments: 45,
+                ..Default::default()
+            };
+            let [w, h] = settings.pixels(65).map(|n| n as u32);
+            let photo = DynamicImage::ImageLuma8(GrayImage::from_pixel(w, h, Luma([70])));
+            let guide = image::RgbImage::from_pixel(w, h, image::Rgb([0, 80, 10]));
+            let ink = GrayImage::from_pixel(w, h, Luma([15]));
+            let art = generate_with_ink(&photo, &settings, Some(&guide), Some(&ink), |_| {
+                ControlFlow::Continue(())
+            })
+            .unwrap();
+            assert_eq!(art.target.dimensions(), (w, h));
+            assert!(art.target.get_pixel(0, 0)[0] < 70);
+            assert!(art.route.path.len() > 1);
+            for x in [-dims[0] / 2., dims[0] / 2.] {
+                for y in [-dims[1] / 2., dims[1] / 2.] {
+                    assert_eq!(
+                        art.route
+                            .anchors
+                            .iter()
+                            .filter(|p| p.x_mm == x && p.y_mm == y)
+                            .count(),
+                        1
+                    );
+                }
+            }
+            let pins: Vec<_> = art.route.anchors.iter().map(|p| [p.x_mm, p.y_mm]).collect();
+            assert!(
+                art.route
+                    .segments
+                    .iter()
+                    .all(|s| !crosses_intermediate_nail(
+                        &pins,
+                        s.from,
+                        s.to,
+                        1.2 + settings.thread_mm + 0.5
+                    ))
+            );
+            let replay = render_preview(&settings, &art.route.path, 65).unwrap();
+            assert_eq!(replay.dimensions(), (w, h));
+        }
+    }
 
     #[test]
     fn predicted_gain_matches_rendered_loss_at_both_scales() {
@@ -817,8 +942,8 @@ mod tests {
         let lines = Lines::new(&canvas, &settings);
         assert!(lines.id(0, 1).is_some());
         let collinear = [[0., 0.], [0.4, 0.], [0.8, 0.]];
-        assert!(crosses_intermediate_nail(&collinear, 0, 2));
-        assert!(!crosses_intermediate_nail(&collinear, 0, 1));
+        assert!(crosses_intermediate_nail(&collinear, 0, 2, 0.0));
+        assert!(!crosses_intermediate_nail(&collinear, 0, 1, 0.0));
         assert_eq!(lines.lines[lines.id(0, 2).unwrap()].length_mm, 150.);
         let saved = serde_json::to_vec(&art.route.settings).unwrap();
         let restored: Settings = serde_json::from_slice(&saved).unwrap();
@@ -1003,7 +1128,8 @@ mod tests {
             canvas.rasterize(
                 canvas.points[segment.from],
                 canvas.points[segment.to],
-                settings.thread_mm / settings.diameter_mm * (canvas.size - 1) as f64,
+                settings.thread_mm / settings.field_mm()[0].max(settings.field_mm()[1])
+                    * (canvas.size - 1) as f64,
                 |sample| {
                     let pixel = &mut replay[sample.index as usize];
                     *pixel += (1.0 - *pixel) * settings.opacity * sample.coverage;

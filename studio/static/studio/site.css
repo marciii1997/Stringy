@@ -319,3 +319,5 @@ summary {
 .motif-distances figure { margin:.6rem 0; }
 .motif-distances details { max-width:100%; }
 .motif-zoom { overflow:auto; max-height:380px; }
+
+.art.rectangular { border-radius: 0; }

@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image
 
 
-def view_quality(target_png, preview_png, priority=None):
+def view_quality(target_png, preview_png, priority=None, rectangular=False):
     with Image.open(BytesIO(target_png)) as target, Image.open(BytesIO(preview_png)) as preview:
         tone = np.asarray(target.convert("L"), dtype=np.float32) / 255
         render = (
@@ -18,7 +18,7 @@ def view_quality(target_png, preview_png, priority=None):
             )
             / 255
         )
-    size = tone.shape[0]
+    size = max(tone.shape)
     tone, render = [cv2.GaussianBlur(a, (0, 0), size / 256) for a in (tone, render)]
 
     def mean(a):
@@ -35,7 +35,7 @@ def view_quality(target_png, preview_png, priority=None):
         / ((mu**2 + nu**2 + 0.01**2) * (variance + 0.03**2))
     )
     axis = np.linspace(-1, 1, size, dtype=np.float32)
-    inside = axis[:, None] ** 2 + axis**2 < 0.95**2
+    inside = np.ones(tone.shape, dtype=bool) if rectangular else axis[:, None] ** 2 + axis**2 < 0.95**2
     weight = None if priority is None else 1 + 3 * np.asarray(priority, dtype=np.float32)[inside] / 255
     return {
         "ssim": float(np.clip(np.average(ssim[inside], weights=weight), -1, 1)),

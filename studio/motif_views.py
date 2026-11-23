@@ -21,6 +21,7 @@ from .motif import (
     analysis_for,
     encoded,
     framing,
+    framing_points,
     style_samples,
 )
 from .views import private_artwork
@@ -135,6 +136,7 @@ def editor(request, pk):
         if photo.mode != "RGBA":
             del samples["natural"]
         styles = {key: base64.b64encode(encoded(gray, "PNG")).decode() for key, gray in samples.items()}
+    corners = framing_points(analysis)
     return render(
         request,
         "studio/motif.html",
@@ -148,7 +150,8 @@ def editor(request, pk):
                 "gradient": GRADIENT,
                 "photo": base64.b64encode(analysis.photo).decode(),
                 "masks": base64.b64encode(analysis.masks).decode(),
-                "framing": framing(analysis),
+                "framing": framing(analysis, corners),
+                "framingCorners": corners,
                 "faces": analysis.faces,
                 "dimensions": analysis.dimensions,
             },

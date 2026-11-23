@@ -215,6 +215,27 @@ laufen. Compose verwendet im gleichen Projekt das vorhandene Datenvolume.
 Neue Ergebnisse zeigen **Optimierer 5**. Bei Problemen zeigt
 `docker compose logs --tail=80 migrate web worker` die Startmeldungen.
 
+## Rechteckige Leinwand und DIN A3
+
+Beim Anlegen eines Motivs oder unter **Parameter ändern und neu berechnen** kannst du
+DIN A3 im Hoch- oder Querformat wählen. Unter **Rechteck · eigene Maße** gibst du
+Werkstückbreite und -höhe jeweils in Millimetern ein (100 bis 2000 mm). Der Rand bis
+zur Mitte der äußeren Nägel beträgt auf jeder Seite 5 mm. A3 hoch ergibt ein
+297 × 420 mm großes Werkstück mit einem Nagelfeld von 287 × 410 mm. Beim automatischen
+Randplan liegt Nagel 0 oben links. Die Nummerierung folgt dem Umfang im Uhrzeigersinn
+und schließt jede Ecke einmal ein. Trage den gemessenen Nagelschaftdurchmesser ein
+(Vorgabe 1,2 mm). Der Optimierer hält bei jeder Verbindung auch für einen tangential
+geführten Faden mindestens 0,5 mm Abstand zu fremden Schäften. Die Vorschau zeigt
+Fäden auf Mittellinien. Kopfgröße, Wickelhöhe und Materialverformung sind separat zu prüfen. Im Motiveditor kannst du den Bildausschnitt vor
+der Berechnung verschieben und zoomen. Vorschauen zeigen das bespannte Nagelfeld.
+Die Laser-SVG enthält das Werkstück in Originalgröße und auf Wunsch seine Schnittkontur.
+
+Mit der CLI gibt `--rectangle-mm` die **Abstände der äußeren Nagelmitten** an.
+Für DIN A3 hoch entspricht das zum Beispiel
+`stringy foto.jpg --rectangle-mm 287 410 --anchors 360 --output a3`.
+Bei freien Plänen entsprechen [-1, -1] und [1, 1] der oberen linken und der unteren
+rechten Ecke des Nagelfelds. Der exportierte Pfad speichert die Geometrie für die Wiedergabe.
+
 ## Motive vorbereiten und Fadenpfade vergleichen
 
 Öffne als Atelier-Administrator ein Motiv und wähle **Motiv bearbeiten und Varianten vergleichen**.

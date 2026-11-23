@@ -166,7 +166,7 @@ def analysis_for(art):
     return MotifAnalysis.objects.get_or_create(original=root, defaults=analyze(root.source))[0]
 
 
-def framing(analysis):
+def framing_points(analysis):
     w, h = analysis.dimensions
     if analysis.faces:
         corners = [
@@ -179,12 +179,20 @@ def framing(analysis):
         subject = Image.open(BytesIO(analysis.masks)).getchannel("R")
         box = subject.point(lambda v: 255 if v >= 160 else 0).getbbox()
         if not box:
-            return {"zoom": 1, "center_x": 50, "center_y": 50}
+            return []
         corners = [
             (x * w / subject.width, y * h / subject.height)
             for x in (box[0], box[2])
             for y in (box[1], box[3])
         ]
+    return corners
+
+
+def framing(analysis, corners=None):
+    w, h = analysis.dimensions
+    corners = framing_points(analysis) if corners is None else corners
+    if not corners:
+        return {"zoom": 1, "center_x": 50, "center_y": 50}
     x, y = [(min(axis) + max(axis)) / 2 for axis in zip(*corners)]
     side = 2 * max(math.hypot(px - x, py - y) for px, py in corners)
     return {
@@ -228,8 +236,10 @@ def style_samples(photo):
 
 def background_darkness(color, size):
     if color == "gradient":
-        axis = (np.arange(size, dtype=np.float32) + 0.5) * (2 / size) - 1
-        radius = np.minimum(1, np.hypot(axis[:, None], axis))
+        width, height = size if isinstance(size, tuple) else (size, size)
+        def axis(n):
+            return (np.arange(n, dtype=np.float32) + 0.5) * (2 / n) - 1
+        radius = np.minimum(1, np.hypot(axis(height)[:, None], axis(width)))
         return GRADIENT[0] + (GRADIENT[1] - GRADIENT[0]) * radius
     return float(color == "black")
 
@@ -238,24 +248,29 @@ def guide_for(art, analysis, size=512):
     params = art.preparation
     subject, focus, clothing = edited_masks(analysis, params.get("strokes", []))
     w, h = analysis.dimensions
-    side = max(1, math.floor(min(w, h) / art.zoom + 0.5))
+    fw, fh = art.field_size
+    scale = min(w / fw, h / fh) / art.zoom
+    def pixels(length):
+        return max(2, 1 + math.floor((size - 1) * length / max(fw, fh) + 0.5))
+    width, height = pixels(fw), pixels(fh)
 
-    def axis(length, center, preview_length):
+    def axis(length, center, preview_length, dimension, count):
+        side = max(1, math.floor(dimension * scale + 0.5))
         offset = math.floor(length * center / 100 - side / 2)
         if not params.get("pad") and art.zoom >= 1:
             offset = max(0, min(length - side, offset))
         start, end = max(0, offset), min(length, offset + side)
 
         def pixel(p):
-            return math.floor((p - offset) * size / side + 0.5)
+            return math.floor((p - offset) * count / side + 0.5)
 
         return start * preview_length / length, end * preview_length / length, pixel(start), pixel(end)
 
-    x, r, left, right = axis(w, art.center_x, subject.width)
-    y, b, top, bottom = axis(h, art.center_y, subject.height)
+    x, r, left, right = axis(w, art.center_x, subject.width, fw, width)
+    y, b, top, bottom = axis(h, art.center_y, subject.height, fh, height)
 
     def raster(im, fill=0):
-        values = np.full((size, size), fill, np.float32)
+        values = np.full((height, width), fill, np.float32)
         if right > left and bottom > top:
             values[top:bottom, left:right] = (
                 np.asarray(
@@ -279,7 +294,7 @@ def guide_for(art, analysis, size=512):
     fade = 1 - (1 - bg) * (1 - cloth)
     ink = None
     if color != "white" and strength:
-        ink = bg * background_darkness(color, size) * (1 - cloth)
+        ink = bg * background_darkness(color, (width, height)) * (1 - cloth)
     if style != "natural" or (transparent and strength):
         # Use the un-matted foreground at cutout edges. The remaining share keeps
         # the original photo, including its full-resolution detail in natural mode.

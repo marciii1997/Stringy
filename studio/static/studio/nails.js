@@ -15,8 +15,14 @@ function initNailEditor(editor) {
     const tone = document.getElementById("tone");
     const mmX = board.querySelector("[data-x]"), mmY = board.querySelector("[data-y]");
     const addAt = board.querySelector("[data-add-at]"), moveTo = board.querySelector("[data-move-to]");
-    const radiusMm = () => Number(form.elements.diameter.value) / 2;
     const mid = canvas.width / 2, radius = mid - 14;
+    function radii() {
+        const {w,h} = nailField(form);
+        return [radius*w/Math.max(w,h),radius*h/Math.max(w,h)];
+    }
+    function outside(x,y) {
+        return nailField(form).rectangular ? Math.max(Math.abs(x),Math.abs(y)) : Math.hypot(x,y);
+    }
     let points = [], active = -1, pointer = null, photo = null, sourceUrl = null;
     try {
         const saved = JSON.parse(hidden.value || "[]");
@@ -30,28 +36,30 @@ function initNailEditor(editor) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
         ctx.beginPath();
-        ctx.arc(mid, mid, radius, 0, 2 * Math.PI);
+        const [rx,ry] = radii();
+        if (nailField(form).rectangular) ctx.rect(mid-rx,mid-ry,2*rx,2*ry);
+        else ctx.arc(mid, mid, radius, 0, 2 * Math.PI);
         ctx.fillStyle = "white";
         ctx.fill();
         ctx.clip();
         if (tone) {
-            ctx.drawImage(tone, mid-radius, mid-radius, radius*2, radius*2);
+            ctx.drawImage(tone, mid-rx, mid-ry, rx*2, ry*2);
         } else if (photo) {
-            const side = Math.max(1, Math.round(Math.min(photo.width, photo.height) / (Number(form.elements.zoom.value) || 1)));
-            const offset = (length, percent) => {
+            const [sw,sh] = photoCrop(form,photo.width,photo.height);
+            const offset = (length, percent, side) => {
                 const pos = Math.floor(length * Number(percent) / 100 - side/2);
-                return hidden.dataset.pad === "1" || side > Math.min(photo.width, photo.height)
+                return hidden.dataset.pad === "1" || Number(form.elements.zoom.value) < 1
                     ? pos : Math.max(0, Math.min(length-side, pos));
             };
-            ctx.drawImage(photo, offset(photo.width, form.elements.center_x.value),
-                offset(photo.height, form.elements.center_y.value), side, side,
-                mid-radius, mid-radius, radius*2, radius*2);
+            ctx.drawImage(photo, offset(photo.width, form.elements.center_x.value,sw),
+                offset(photo.height, form.elements.center_y.value,sh), sw, sh,
+                mid-rx, mid-ry, rx*2, ry*2);
         }
         ctx.restore();
         ctx.strokeStyle = "#84918c";
         ctx.stroke();
         points.forEach(([x,y], i) => {
-            const px = mid + x*radius, py = mid + y*radius;
+            const px = mid + x*rx, py = mid + y*ry;
             ctx.beginPath();
             ctx.arc(px, py, i === active ? 6 : 4, 0, 2*Math.PI);
             ctx.fillStyle = i === active ? "#ac3653" : "#146664";
@@ -116,13 +124,13 @@ function initNailEditor(editor) {
     });
     function updateCoordinates() {
         const [x, y] = points[active] || [0, 0];
-        mmX.value = Number((x * radiusMm()).toFixed(6));
-        mmY.value = Number((y * radiusMm()).toFixed(6));
+        mmX.value = Number((x * nailField(form).w/2).toFixed(6));
+        mmY.value = Number((y * nailField(form).h/2).toFixed(6));
     }
     function placeAt(add) {
-        const p = [mmX.valueAsNumber / radiusMm(), mmY.valueAsNumber / radiusMm()];
-        if (!p.every(Number.isFinite) || Math.hypot(...p) > 1 + 1e-12) {
-            status.textContent = "Gib eine Position innerhalb des Kreises ein.";
+        const p = [mmX.valueAsNumber * 2/nailField(form).w, mmY.valueAsNumber * 2/nailField(form).h];
+        if (!p.every(Number.isFinite) || outside(...p) > 1 + 1e-12) {
+            status.textContent = "Gib eine Position innerhalb des Nagelfelds ein.";
             return;
         }
         if (points.some(([x,y], i) => (add || i !== active) && Math.hypot(x-p[0], y-p[1]) < 1e-6)) {
@@ -135,7 +143,7 @@ function initNailEditor(editor) {
     }
     addAt.addEventListener("click", () => placeAt(true));
     moveTo.addEventListener("click", () => placeAt(false));
-    form.elements.diameter.addEventListener("input", updateCoordinates);
+    form.addEventListener("input", ev => { if (["diameter","canvas_format","canvas_width","canvas_height"].includes(ev.target.name)) updateCoordinates(); });
     clear.addEventListener("click", () => {
         if (points.length) {
             cleared = points;
@@ -148,7 +156,19 @@ function initNailEditor(editor) {
         sync();
     });
     seed.addEventListener("click", () => {
-        points = Array.from({length:ringCount}, (_,i) => {
+        const {w,h,rectangular} = nailField(form);
+        if (rectangular) {
+            const sides = [1,1,1,1], lengths = [w,h,w,h];
+            for (let i=4;i<ringCount;i++) {
+                let k=0;
+                for (let j=1;j<4;j++) if (lengths[j]/sides[j]>lengths[k]/sides[k]) k=j;
+                sides[k]++;
+            }
+            points=sides.flatMap((n,j)=>Array.from({length:n},(_,i)=>{
+                const t=2*i/n-1;
+                return [[t,-1],[1,t],[-t,1],[-1,-t]][j];
+            }));
+        } else points = Array.from({length:ringCount}, (_,i) => {
             const angle = 2*Math.PI*i/ringCount - Math.PI/2;
             return [Math.cos(angle), Math.sin(angle)];
         });
@@ -163,19 +183,21 @@ function initNailEditor(editor) {
     });
     function location(ev) {
         const r = canvas.getBoundingClientRect();
-        return [((ev.clientX-r.left)*canvas.width/r.width-mid)/radius,
-                ((ev.clientY-r.top)*canvas.height/r.height-mid)/radius];
+        const [rx,ry] = radii();
+        return [((ev.clientX-r.left)*canvas.width/r.width-mid)/rx,
+                ((ev.clientY-r.top)*canvas.height/r.height-mid)/ry];
     }
     canvas.addEventListener("pointerdown", ev => {
         if (ev.button !== 0 || pointer !== null) return;
         const p = location(ev);
-        let hit = -1, distance = 9*canvas.width/canvas.getBoundingClientRect().width/radius;
+        const [rx,ry] = radii();
+        let hit = -1, distance = 9*canvas.width/canvas.getBoundingClientRect().width;
         points.forEach(([x,y], i) => {
-            const d = Math.hypot(x-p[0], y-p[1]);
+            const d = Math.hypot((x-p[0])*rx, (y-p[1])*ry);
             if (d <= distance) { hit = i; distance = d; }
         });
         if (hit < 0) {
-            if (Math.hypot(...p) > 1 || points.length >= 720) return;
+            if (outside(...p) > 1 || points.length >= 720) return;
             hit = points.length;
             points.push(p);
         }
@@ -186,7 +208,7 @@ function initNailEditor(editor) {
     });
     canvas.addEventListener("pointermove", ev => {
         if (ev.pointerId !== pointer) return;
-        const [x,y] = location(ev), d = Math.max(1, Math.hypot(x,y));
+        const [x,y] = location(ev), d = Math.max(1, outside(x,y));
         points[active] = [x/d, y/d];
         hidden.value = JSON.stringify(points);
         draw();
@@ -198,7 +220,7 @@ function initNailEditor(editor) {
     form.addEventListener("submit", ev => {
         if (mode.value === "free" && points.length < 3) {
             ev.preventDefault();
-            status.textContent = "Platziere mindestens drei Nägel oder wähle den Randkreis.";
+            status.textContent = "Platziere mindestens drei Nägel oder wähle den Randplan.";
             editor.closest("details")?.setAttribute("open","");
             mode.focus();
         }

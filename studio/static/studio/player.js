@@ -1,5 +1,5 @@
 const player = document.querySelector(".player");
-const {path, anchors, positions, firstExtra, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, rectangle, positions, firstExtra, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
 const slider = player.querySelector("input[type=range]");
@@ -21,10 +21,14 @@ const back = player.querySelector("[data-back]");
 const next = player.querySelector("[data-next]");
 const size = canvas.width;
 const radius = (size - 16) / 2;
+const [w,h] = rectangle || [1,1];
+const rx = radius*w/Math.max(w,h), ry = radius*h/Math.max(w,h);
+canvas.width=Math.round(2*rx+16); canvas.height=Math.round(2*ry+16);
+const cx=canvas.width/2, cy=canvas.height/2;
 const points = Array.from({length: anchors}, (_, index) => {
     if (positions) {
         const p = positions[index];
-        return p ? [size/2 + radius*p[0], size/2 + radius*p[1]] : null;
+        return p ? [cx + rx*p[0], cy + ry*p[1]] : null;
     }
     const angle = 2 * Math.PI * index / anchors - Math.PI / 2;
     return [size / 2 + radius * Math.cos(angle), size / 2 + radius * Math.sin(angle)];
@@ -36,14 +40,15 @@ function draw() {
     const step = Number(slider.value);
     ctx.globalAlpha = 1;
     ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, size, size);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.beginPath();
-    ctx.arc(size / 2, size / 2, radius, 0, 2 * Math.PI);
+    if (rectangle) ctx.rect(cx-rx,cy-ry,2*rx,2*ry);
+    else ctx.arc(cx,cy,radius,0,2*Math.PI);
     ctx.strokeStyle = "#c3bdb1";
     ctx.lineWidth = 1;
     ctx.stroke();
     const plan = planToggle?.checked && target.naturalWidth > 0;
-    if (plan) ctx.drawImage(target, size / 2 - radius, size / 2 - radius, radius * 2, radius * 2);
+    if (plan) ctx.drawImage(target, cx-rx,cy-ry,2*rx,2*ry);
     ctx.lineWidth = width * radius * 2;
     ctx.globalAlpha = opacity ?? 1;
     ctx.strokeStyle = "#000";
@@ -68,8 +73,8 @@ function draw() {
             ctx.fill(); ctx.stroke();
             if (id === current || added || anchors <= 45) {
                 ctx.font = "bold 14px system-ui";
-                ctx.textAlign = x > size/2 ? "right" : "left";
-                const dx = x > size/2 ? -7 : 7;
+                ctx.textAlign = x > cx ? "right" : "left";
+                const dx = x > cx ? -7 : 7;
                 ctx.lineWidth = 3;
                 ctx.strokeText(String(id), x+dx, y+4);
                 ctx.fillStyle = "#142e2c";

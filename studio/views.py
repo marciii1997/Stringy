@@ -79,7 +79,7 @@ def door(request, pk, day):
                 "initial": cursor - start,
                 **playback_layout(gift.artwork, path),
                 "opacity": gift.artwork.opacity,
-                "width": gift.artwork.thread / gift.artwork.diameter,
+                "width": gift.artwork.thread / max(gift.artwork.field_size),
             },
         },
     )
@@ -123,6 +123,8 @@ def private_artwork(view):
 def playback_layout(art, released=None):
     positions = art.winding_positions
     layout = {"anchors": len(positions) or art.anchors}
+    if art.rectangle:
+        layout["rectangle"] = art.rectangle
     if positions:
         ids = range(len(positions)) if released is None else sorted(set(released))
         layout["positions"] = {i: positions[i] for i in ids}
@@ -146,7 +148,7 @@ def simulation(request, pk):
                 "start": 0,
                 **playback_layout(art),
                 "opacity": art.opacity,
-                "width": art.thread / art.diameter,
+                "width": art.thread / max(art.field_size),
             },
         },
     )
@@ -184,6 +186,7 @@ def laser(request, pk):
     form = LaserForm(
         request.POST if request.method == "POST" else None,
         diameter=art.diameter,
+        rectangle=art.rectangle,
         count=art.winding_anchor_count,
         free_anchors=art.route.get("anchors") if art.winding_positions else None,
     )

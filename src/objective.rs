@@ -42,7 +42,7 @@ impl Objective {
         guide: Option<&image::RgbImage>,
     ) -> Self {
         // Normalize the local mean by the circle mask so the rim is not a false edge.
-        let image = canvas.render(target);
+        let image = canvas.render_area(target, canvas.size, canvas.size);
         let mask = image::GrayImage::from_fn(canvas.size as u32, canvas.size as u32, |x, y| {
             image::Luma([if canvas.inside[y as usize * canvas.size + x as usize] {
                 255

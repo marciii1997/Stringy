@@ -62,21 +62,18 @@
     queued = false;
   function frame() {
     const [width, height] = cfg.dimensions;
-    const side = Math.max(
-      1,
-      Math.round(Math.min(width, height) / Math.max(0.01, num("zoom"))),
-    );
-    const offset = (d, center) => {
+    const [sw,sh] = photoCrop(form,width,height);
+    const offset = (d, center, side) => {
       const start = Math.floor((d * center) / 100 - side / 2);
       return form.elements.pad.checked || num("zoom") < 1
         ? start
         : Math.max(0, Math.min(d - side, start));
     };
     return [
-      (offset(width, num("center_x")) * w) / width,
-      (offset(height, num("center_y")) * h) / height,
-      (side * w) / width,
-      (side * h) / height,
+      (offset(width, num("center_x"),sw) * w) / width,
+      (offset(height, num("center_y"),sh) * h) / height,
+      (sw * w) / width,
+      (sh * h) / height,
     ];
   }
   function applyStroke(s) {
@@ -163,19 +160,26 @@
     processed.putImageData(tone, 0, 0);
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
-    ctx.ellipse(x + sw / 2, y + sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
+    const field = nailField(form);
+    if (field.rectangular) ctx.rect(x,y,sw,sh);
+    else ctx.ellipse(x + sw / 2, y + sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
     ctx.fillStyle = "rgba(0,0,0,.50)";
     ctx.fill("evenodd");
     ctx.beginPath();
-    ctx.ellipse(x + sw / 2, y + sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
+    if (field.rectangular) ctx.rect(x,y,sw,sh);
+    else ctx.ellipse(x + sw / 2, y + sh / 2, sw / 2, sh / 2, 0, 0, Math.PI * 2);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "white";
     ctx.stroke();
+    view.width = Math.max(2,Math.round(256*field.w/Math.max(field.w,field.h)));
+    view.height = Math.max(2,Math.round(256*field.h/Math.max(field.w,field.h)));
     const v = view.getContext("2d");
+    v.scale(view.width/256,view.height/256);
     v.clearRect(0, 0, 256, 256);
     v.save();
     v.beginPath();
-    v.arc(128, 128, 128, 0, Math.PI * 2);
+    if (field.rectangular) v.rect(0,0,256,256);
+    else v.arc(128, 128, 128, 0, Math.PI * 2);
     v.clip();
     const paddingColor = darkness => {
       const value = Math.round(255 * (1 - bg * darkness));
@@ -279,7 +283,16 @@
   };
   byId("frame").onclick = () => {
     form.elements.pad.checked = true;
-    for (const [k, v] of Object.entries(cfg.framing))
+    const frame = {...cfg.framing};
+    const field = nailField(form);
+    if (field.rectangular && cfg.framingCorners.length) {
+      const [w,h] = cfg.dimensions;
+      const xs = cfg.framingCorners.map(p=>p[0]), ys = cfg.framingCorners.map(p=>p[1]);
+      const bound = Math.max((Math.max(...xs)-Math.min(...xs))/field.w,
+                             (Math.max(...ys)-Math.min(...ys))/field.h);
+      frame.zoom = Math.max(.01,Math.min(5,Math.floor(10000*Math.min(w/field.w,h/field.h)/bound)/10000));
+    }
+    for (const [k, v] of Object.entries(frame))
       form.elements[k].value = v;
     schedule();
   };

@@ -65,9 +65,9 @@ def process_one():
                     base = winner["route"]
                     size = base["settings"]["raster_size"]
                     nail_search["baseline"] = base["view_quality"]
-                    radius = art.diameter / 2
+                    w, h = art.field_size
                     existing = art.nail_positions or [
-                        [a["x_mm"] / radius, a["y_mm"] / radius] for a in base["anchors"]
+                        [2 * a["x_mm"] / w, 2 * a["y_mm"] / h] for a in base["anchors"]
                     ]
                     extra = suggest_positions(
                         reference,
@@ -76,6 +76,7 @@ def process_one():
                         min(art.auto_nails, 720 - len(existing)),
                         art.diameter,
                         priority,
+                        rectangle=art.rectangle,
                     )
                     nail_search["proposed"] = len(extra)
                     if not extra:
@@ -113,7 +114,7 @@ def process_one():
                 target = (folder / "target.png").read_bytes()
                 if reference is None:
                     reference = target
-                quality = view_quality(reference, preview, priority)
+                quality = view_quality(reference, preview, priority, rectangular=bool(art.rectangle))
                 count = len(route["path"]) - 1
                 added = keep_used_nails(route, art.anchors) if positions else 0
                 score = (quality["ssim"] - quality["tone_rmse"], -added, -count)
@@ -146,6 +147,7 @@ def process_one():
                         anchors=art.anchors,
                         nail_positions=art.nail_positions,
                         diameter=art.diameter,
+                        shaft_mm=art.shaft_mm, canvas_format=art.canvas_format, canvas_width=art.canvas_width, canvas_height=art.canvas_height,
                         thread=art.thread,
                         opacity=art.opacity,
                     )
@@ -170,7 +172,7 @@ def process_one():
                         pass  # The new path is complete even if the archive cannot be replayed.
                     else:
                         image = (folder / "preview.png").read_bytes()
-                        winner["route"]["previous_quality"] = view_quality(reference, image, priority)
+                        winner["route"]["previous_quality"] = view_quality(reference, image, priority, rectangular=bool(art.rectangle))
             if art.auto_nails:
                 winner["route"]["auto_nails"] = nail_search
             winner["route"]["quality_trials"] = results
@@ -192,8 +194,6 @@ def optimizer_command(art, source, folder, size, positions=None):
         str(size),
         "--preview-size",
         "1024",
-        "--diameter-mm",
-        str(art.diameter),
         "--thread-mm",
         str(art.thread),
         "--passes",
@@ -213,6 +213,10 @@ def optimizer_command(art, source, folder, size, positions=None):
         "--max-segments",
         str(art.budget),
     ]
+    if art.rectangle:
+        command.extend(["--rectangle-mm", *map(str, art.rectangle), "--shaft-mm", str(art.shaft_mm)])
+    else:
+        command.extend(["--diameter-mm", str(art.diameter)])
     if positions or art.nail_positions:
         layout = folder / "nails.json"
         layout.write_text(json.dumps(positions or art.nail_positions))

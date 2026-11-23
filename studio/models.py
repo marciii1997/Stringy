@@ -33,6 +33,30 @@ class Artwork(models.Model):
     anchors = models.PositiveIntegerField(
         "Anker", default=360, validators=[MinValueValidator(3), MaxValueValidator(720)]
     )
+    class Format(models.TextChoices):
+        CIRCLE = "circle", "Rund"
+        A3_PORTRAIT = "a3_portrait", "DIN A3 · Hochformat (297 × 420 mm)"
+        A3_LANDSCAPE = "a3_landscape", "DIN A3 · Querformat (420 × 297 mm)"
+        CUSTOM = "custom", "Rechteck · eigene Maße"
+
+    canvas_format = models.CharField("Leinwandformat", max_length=16, choices=Format, default=Format.CIRCLE)
+    shaft_mm = models.FloatField("Nagelschaftdurchmesser (mm)", default=1.2,
+        validators=[MinValueValidator(0.1), MaxValueValidator(10)])
+    canvas_width = models.FloatField("Werkstückbreite (mm)", default=297, blank=True,
+        validators=[MinValueValidator(100), MaxValueValidator(2000)])
+    canvas_height = models.FloatField("Werkstückhöhe (mm)", default=420, blank=True,
+        validators=[MinValueValidator(100), MaxValueValidator(2000)])
+
+    @property
+    def rectangle(self):
+        if self.canvas_format == self.Format.CIRCLE:
+            return None
+        return [self.canvas_width - 10, self.canvas_height - 10]
+
+    @property
+    def field_size(self):
+        return self.rectangle or [self.diameter, self.diameter]
+
     diameter = models.FloatField(
         "Durchmesser (mm)", default=600, validators=[MinValueValidator(100), MaxValueValidator(2000)]
     )
@@ -83,7 +107,11 @@ class Artwork(models.Model):
 
     @property
     def winding_positions(self):
-        return self.route.get("settings", {}).get("nail_positions") or self.nail_positions
+        positions = self.route.get("settings", {}).get("nail_positions") or self.nail_positions
+        if not positions and self.rectangle:
+            w, h = self.rectangle
+            return [[2*a["x_mm"]/w, 2*a["y_mm"]/h] for a in self.route.get("anchors", [])]
+        return positions
 
     @property
     def winding_anchor_count(self):

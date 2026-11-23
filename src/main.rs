@@ -23,7 +23,7 @@ struct Args {
     /// Render a saved path.json to preview.png using the archived thread and anchors.
     #[arg(long)]
     replay: Option<PathBuf>,
-    /// Optional RGB guidance PNG aligned with the final square raster.
+    /// Optional RGB guidance PNG aligned with the final nail-field raster.
     #[arg(long)]
     guide: Option<PathBuf>,
     /// Replay the final path at 2048–4096 pixels and export a downsampled reference preview.
@@ -46,12 +46,18 @@ struct Args {
     anchors: usize,
     #[arg(long, default_value_t = Settings::default().diameter_mm)]
     diameter_mm: f64,
+    /// Rectangular nail field width and height in mm, measured between outer nail centers.
+    #[arg(long, num_args = 2, value_names = ["WIDTH", "HEIGHT"], conflicts_with = "diameter_mm")]
+    rectangle_mm: Option<Vec<f64>>,
+    /// Nail shaft diameter in mm. Rectangles default to 1.2 mm plus 0.5 mm clearance.
+    #[arg(long)]
+    shaft_mm: Option<f64>,
     #[arg(long, default_value_t = Settings::default().thread_mm)]
     thread_mm: f64,
-    /// Magnification of the square crop.
+    /// Magnification of the image crop.
     #[arg(long, default_value_t = Settings::default().zoom)]
     zoom: f64,
-    /// Allow the selected circle to extend onto white outside the image.
+    /// Allow the selected crop to extend onto white outside the image.
     #[arg(long)]
     pad_crop: bool,
     /// Crop center as a percentage of the oriented image width.
@@ -80,7 +86,7 @@ struct Args {
     /// Minimum circular distance in anchors (default: 8, reduced for small anchor counts).
     #[arg(long)]
     min_anchor_gap: Option<usize>,
-    /// First anchor, with 0 at the top of the canvas.
+    /// Starting nail ID. Automatic plans start at the top of the circle or top left of the rectangle.
     #[arg(long, default_value_t = Settings::default().start_anchor)]
     start_anchor: usize,
     /// Deduction in squared-error gain per earlier use of the same chord.
@@ -139,6 +145,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         base_ring: args.base_ring.unwrap_or(0),
         nail_positions,
         diameter_mm: args.diameter_mm,
+        shaft_mm: args.shaft_mm.or(args.rectangle_mm.as_ref().map(|_| 1.2)),
+        rectangle_mm: args.rectangle_mm.map(|d| [d[0], d[1]]),
         thread_mm: args.thread_mm,
         opacity: args.opacity,
         detail: args.detail,

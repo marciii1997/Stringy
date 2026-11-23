@@ -30,6 +30,39 @@ class CanvasTests(TestCase):
             title="Advent", year=2026, recipient=cls.person, artwork=cls.art
         )
 
+    def test_rectangular_presets_custom_size_and_laser_geometry(self):
+        from .forms import CalculationForm
+        from .views import playback_layout
+
+        self.client.force_login(self.admin)
+        data = {name: getattr(self.art, name) for name in CalculationForm.Meta.fields}
+        data.update(nail_mode="free", nail_positions="[[-1,-1],[1,-1],[1,1],[-1,1]]")
+        for shape, dims in [("a3_landscape", (420, 297)), ("a3_portrait", (297, 420)),
+                            ("custom", (543.5, 280))]:
+            form = CalculationForm({**data, "canvas_format": shape,
+                                    "canvas_width": 543.5, "canvas_height": 280})
+            self.assertTrue(form.is_valid(),form.errors)
+            art = form.save(commit=False)
+            self.assertEqual((art.canvas_width,art.canvas_height),dims)
+            w,h = art.rectangle
+            art.route = {"settings": {"rectangle_mm": [w,h], "diameter_mm": 600},
+                         "anchors": [{"id":i,"x_mm": x*w/2, "y_mm": y*h/2}
+                                     for i,(x,y) in enumerate(art.nail_positions)]}
+            art.state = Artwork.State.READY
+            art.save()
+            self.assertEqual(playback_layout(art, [0,2])["positions"],{0:[-1,-1],2:[1,1]})
+            response = self.client.post(reverse("laser",args=[art.pk]),
+                         {"mode":"hole","feature_mm":1,"margin_mm":30,"labels":"none","outline":"on"})
+            svg = ET.fromstring(response.content)
+            self.assertEqual((svg.get("width"),svg.get("height")),tuple(f"{v:g}mm" for v in dims))
+            self.assertIsNotNone(svg.find(".//*[@id='aussenkontur']/{*}rect"))
+            first = svg.find(".//*[@id='anker-0']")
+            self.assertEqual((float(first.get("cx")),float(first.get("cy"))),(5,5))
+        form = CalculationForm({**data,"canvas_format":"custom","canvas_width":"","canvas_height":99})
+        self.assertFalse(form.is_valid())
+        self.assertIn("canvas_width",form.errors)
+        self.assertIn("canvas_height",form.errors)
+
     def test_real_scale_and_opt_in_layers(self):
         self.client.force_login(self.admin)
         url = reverse("laser", args=[self.art.pk])

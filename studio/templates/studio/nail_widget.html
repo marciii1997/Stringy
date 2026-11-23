@@ -1,14 +1,14 @@
 <div class="nail-editor">
   <input type="hidden" name="{{ widget.name }}" value="{{ widget.value|default_if_none:'' }}"{% include "django/forms/widgets/attrs.html" %}>
   <select name="nail_mode" aria-label="Grundplan für die Nägel">
-    <option value="ring">Gleichmäßiger Randkreis</option>
+    <option value="ring">Nägel entlang des Randes</option>
     <option value="free">Nägel frei platzieren</option>
   </select>
   <div data-board hidden>
     <p>Tippe auf das Motiv, um einen Nagel zu setzen. Ziehe vorhandene Nägel zum Verschieben. Nagel 0 ist der Startpunkt.</p>
     <canvas width="560" height="560" aria-label="Nagelplan auf dem Bildausschnitt"></canvas>
     <div class="nail-tools">
-      <button type="button" data-ring>Randkreis übernehmen</button>
+      <button type="button" data-ring>Randnägel übernehmen</button>
       <button type="button" data-clear>Plan leeren</button>
       <label>Nagel auswählen <select data-selection></select></label>
       <button type="button" data-remove>Auswahl entfernen</button>
