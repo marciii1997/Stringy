@@ -215,6 +215,24 @@ laufen. Compose verwendet im gleichen Projekt das vorhandene Datenvolume.
 Neue Ergebnisse zeigen **Optimierer 5**. Bei Problemen zeigt
 `docker compose logs --tail=80 migrate web worker` die Startmeldungen.
 
+## Zwei Uploads mit höchstens 350 Nägeln optimieren
+
+Im Projektordner berechnet dieser Befehl die zwei jüngsten Original-Uploads. Für bestimmte
+Motive können deren IDs angehängt werden, etwa `optimize_350 12 15`.
+
+```sh
+docker compose run --rm --no-deps worker python manage.py optimize_350
+```
+
+Der Lauf vergleicht Randnägel, bildabhängige Rand- und Innenpunkte und eine feinere
+Berechnung. Alle Varianten eines Bildes verwenden dessen Ausschnitt, Fadenstärke und
+Vorbereitung. Die Bewertung berücksichtigt Strukturähnlichkeit, Tonwertfehler,
+Abdunklung heller Flächen und modellierte dunkelgraue Nagelköpfe von 3 mm.
+Das Programm speichert pro Original den besten Pfad als neues Motiv. Sämtliche
+genutzten Nägel sind durchgehend nummeriert und zählen gemeinsam zum Limit.
+Am Ende erscheint der Atelierpfad. Ein weiterer Aufruf erkennt vorhandene Ergebnisse.
+Die angenommene Kopfgröße und die Vergleichswerte stehen im Fadenpfad-JSON.
+
 ## Rechteckige Leinwand und DIN A3
 
 Beim Anlegen eines Motivs oder unter **Parameter ändern und neu berechnen** kannst du
