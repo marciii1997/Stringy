@@ -134,6 +134,7 @@ class CanvasTests(TestCase):
             "settings": {"diameter_mm": 600, "nail_positions": layout},
             "anchors": [{"id": i, "x_mm": x * 300, "y_mm": y * 300} for i, (x, y) in enumerate(layout)],
             "path": [0, 1, 2, 3] * 12 + [0],
+            "winding_sides": ["cw", "ccw"] * 24 + ["cw"],
         }
         self.art.save()
         self.client.force_login(self.admin)
@@ -148,6 +149,11 @@ class CanvasTests(TestCase):
             self.assertAlmostEqual(float(nail.get("cx")), 305 + p["x_mm"])
             self.assertAlmostEqual(float(nail.get("cy")), 305 + p["y_mm"])
         self.client.force_login(self.person)
-        playback = self.client.get(reverse("door", args=[self.gift.pk, 1])).context["playback"]
+        response = self.client.get(reverse("door", args=[self.gift.pk, 1]))
+        self.assertEqual(response.context["day_directions"], [
+            (0, "im Uhrzeigersinn"), (1, "gegen den Uhrzeigersinn"), (2, "im Uhrzeigersinn")
+        ])
+        self.assertContains(response, "↺")
+        playback = response.context["playback"]
         self.assertEqual(playback["path"], [0, 1, 2])
         self.assertEqual(playback["positions"], {0: layout[0], 1: layout[1], 2: layout[2]})

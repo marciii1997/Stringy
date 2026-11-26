@@ -11,29 +11,34 @@
 <section>
 <h2>Ausschnitt und Masken</h2>
 <canvas id="brush" aria-label="Bild mit editierbaren Masken und Nagelfeld"></canvas>
+<div class="actions"><button type="button" id="frame">Automatischer Ausschnitt</button></div>
+{{ calc.zoom.as_field_group }}
+<details><summary>Maske und Bildmitte bearbeiten</summary>
 <label>Werkzeug <select id="tool">
 <option value="center">Bildmitte setzen</option><option value="subject">Motiv erhalten</option>
 <option value="background">Als Hintergrund markieren</option><option value="focus">Fokus hinzufügen</option>
 <option value="unfocus">Fokus entfernen</option><option value="clothing">Kleidung markieren</option>
 <option value="unclothe">Kleidung entfernen</option></select></label>
 <label>Pinselradius <input type="range" id="radius" min="1" max="16" value="4"> </label>
-<div class="actions"><button type="button" id="undo">Strich zurück</button>
-<button type="button" id="frame">Automatischer Ausschnitt</button></div>
+<div class="actions"><button type="button" id="undo">Strich zurück</button></div>
 <p id="detection"></p><p role="status" id="brush-status"></p>
-{{ mix.pad.as_field_group }} {{ calc.zoom.as_field_group }} {{ calc.center_x.as_field_group }} {{ calc.center_y.as_field_group }}
+{{ mix.pad.as_field_group }} {{ calc.center_x.as_field_group }} {{ calc.center_y.as_field_group }}
+</details>
 </section>
 <section>
 <h2>Graustufenvorlage</h2>
 <canvas id="tone" width="256" height="256" aria-label="Vorschau der Tonwerte"></canvas>
+<button type="button" id="cutout">Motiv freistellen</button>
+<details><summary>Tonwerte und Fokus einstellen</summary>
 {{ mix.style.as_field_group }}
 {{ mix.background_color.as_field_group }}
-<button type="button" id="cutout">Motiv freistellen</button>
 <p>Für feine Ränder an Haaren und Fell kannst du die Auswahl mit „Motiv erhalten“ und „Als Hintergrund markieren“ korrigieren.</p>
 {% for field in sliders %}<label class="slider">{{ field.label }} {{ field }} <output for="{{ field.id_for_label }}"></output></label>{% endfor %}
 <p>Der Fokus erhöht das Gewicht markierter Details im Fadenpfad. Die berechnete Simulation zeigt, welche Konturen der Faden tatsächlich trifft.</p>
+</details>
 </section>
 </div>
-<h2>Leinwand und Nagelplan</h2>
+<details><summary>Werkstück, Nagelplan und Rechenparameter</summary>
 <div data-format-field>{{ calc.canvas_format.as_field_group }}</div>
 <div data-format-field>{{ calc.canvas_width.as_field_group }}</div><div data-format-field>{{ calc.canvas_height.as_field_group }}</div>
 <div data-format-field>{{ calc.shaft_mm.as_field_group }}</div>
@@ -41,13 +46,15 @@
 {{ calc.anchors.as_field_group }}
 {{ calc.nail_positions.as_field_group }}
 <p>{{ calc.auto_nails.as_field_group }}</p>
-<details><summary>Faden und Rechenparameter</summary>
 {% for field in calc %}{% if field.name != "shaft_mm" and field.name != "diameter" and field.name != "canvas_format" and field.name != "canvas_width" and field.name != "canvas_height" and field.name != "anchors" and field.name != "auto_nails" and field.name != "nail_positions" and field.name != "zoom" and field.name != "center_x" and field.name != "center_y" %}<p>{{ field.as_field_group }}</p>{% endif %}{% endfor %}
 </details>
-<div class="actions"><button name="action" value="single">Eigene Variante berechnen</button>
+<div class="actions"><button name="action" value="single">Variante berechnen</button></div>
+<details><summary>Mehrere Varianten vergleichen</summary>
+<div class="actions">
 <button name="action" value="threads">0,15 und 0,25 mm vergleichen</button>
 <button name="action" value="styles">Drei Bildstile vergleichen</button>
 <button name="action" value="compare">Sechs Varianten vergleichen</button></div>
+</details>
 </form>
 {{ config|json_script:"motif-config" }}
 <script src="{% static 'studio/motif.js' %}" defer></script>

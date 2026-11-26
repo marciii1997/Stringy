@@ -23,6 +23,37 @@ fn euler_path(lines: &Lines, counts: &[u32], start: usize) -> Vec<usize> {
 }
 
 impl Search<'_> {
+    // Reversing b..c changes only the two cut edges (a,b) and (c,d).
+    // Nail loads and both path endpoints are invariant.
+    pub(super) fn rewire(&mut self, path: &mut [usize], pass: usize) {
+        if path.len() < 4 { return; }
+        let edges = path.len() - 1;
+        let mut rng = 0x8471_u64.wrapping_add(pass as u64);
+        for left in 0..edges - 2 {
+            for _ in 0..16 {
+                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let right = left + 2 + ((rng >> 32) as usize % (edges - left - 2));
+                let (a,b,c,d) = (path[left], path[left+1], path[right], path[right+1]);
+                if a == d || b == c { continue; }
+                let (Some(first), Some(second)) = (self.lines.id(a,c), self.lines.id(b,d)) else { continue; };
+                let old_first = self.lines.id(a,b).unwrap();
+                let old_second = self.lines.id(c,d).unwrap();
+                self.change(old_first,false);
+                self.change(old_second,false);
+                let old = self.pair_gain(old_first,old_second);
+                let new = self.pair_gain(first,second);
+                if new > old + MIN_GAIN {
+                    self.change(first,true);
+                    self.change(second,true);
+                    path[left+1..=right].reverse();
+                } else {
+                    self.change(old_first,true);
+                    self.change(old_second,true);
+                }
+            }
+        }
+    }
+
     // Cost improvement from removing one copy, including the repeat penalty.
     fn removal_gain(&mut self, id: usize) -> f64 {
         self.change(id, false);
@@ -111,7 +142,7 @@ impl Search<'_> {
                 break;
             }
             let (a, b) = self.lines.lines[id].endpoints;
-            if !connected[a] && !connected[b] {
+            if (!connected[a] && !connected[b]) || !self.can_add(id) {
                 continue;
             }
             let gain = self.gain(id);
@@ -148,14 +179,18 @@ impl Search<'_> {
                     continue;
                 }
                 let id = m.line;
-                let add = self.gain(id);
+                let add = if self.can_add(id) {
+                    self.gain(id)
+                } else {
+                    f64::NEG_INFINITY
+                };
                 let remove = if self.repeats[id] > u32::from(tree[id]) {
                     self.removal_gain(id)
                 } else {
                     f64::NEG_INFINITY
                 };
                 let gain = add.max(remove);
-                if best.is_none_or(|(score, _, _, _)| gain > score) {
+                if gain.is_finite() && best.is_none_or(|(score, _, _, _)| gain > score) {
                     best = Some((gain, id, m.anchor, add >= remove));
                 }
             }
@@ -173,7 +208,7 @@ impl Search<'_> {
                 for m in &self.lines.moves[a] {
                     if let Some(second) = self.lines.id(m.anchor, b) {
                         let gain = self.pair_gain(m.line, second);
-                        if bridge.is_none_or(|(score, _, _)| gain > score) {
+                        if gain.is_finite() && bridge.is_none_or(|(score, _, _)| gain > score) {
                             bridge = Some((gain, m.line, second));
                         }
                     }

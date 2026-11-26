@@ -5,7 +5,7 @@
   <p class="kicker">Advent {{ gift.year|stringformat:"d" }}</p>
   <h1>{{ gift.title }}</h1>
   <p>Vom 1. bis 24. Dezember öffnet sich täglich um Mitternacht ein Türchen (Berliner Zeit).</p>
-  <p>{{ gift.artwork.anchors }} {% if gift.artwork.auto_nails %}Grundnägel{% else %}Anker{% endif %} · Ø {{ gift.artwork.diameter|floatformat:"-1" }} mm · Faden {{ gift.artwork.thread|floatformat:"-2" }} mm. {% if gift.artwork.auto_nails or gift.artwork.nail_positions %}Die Nummern entsprechen dem Nagelplan auf deiner Leinwand.{% else %}Nummeriere ab 0 oben im Uhrzeigersinn.{% endif %}</p>
+  <p>{{ gift.artwork.anchors }} {% if gift.artwork.auto_nails %}Grundnägel{% else %}Anker{% endif %} · {% if gift.artwork.rectangle %}{{ gift.artwork.canvas_width|floatformat:"-2" }} × {{ gift.artwork.canvas_height|floatformat:"-2" }} mm{% else %}Ø {{ gift.artwork.diameter|floatformat:"-1" }} mm{% endif %} · Faden {{ gift.artwork.thread|floatformat:"-2" }} mm. {% if gift.artwork.auto_nails or gift.artwork.nail_positions %}Die Nummern entsprechen dem Nagelplan auf deiner Leinwand.{% else %}Nummeriere ab 0 oben im Uhrzeigersinn.{% endif %}</p>
   <div class="doors">
     {% for day in days %}
       {% if day <= unlocked %}

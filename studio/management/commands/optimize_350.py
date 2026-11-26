@@ -5,7 +5,9 @@ import json
 import math
 import subprocess
 import tempfile
+from collections import Counter
 from io import BytesIO
+from itertools import combinations
 from pathlib import Path
 
 import cv2
@@ -14,7 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from PIL import Image
 
-from studio.auto_nails import keep_used_nails, suggest_positions
+from studio.auto_nails import compact_route, normalized_positions, suggest_positions
 from studio.management.commands.process_art import optimizer_command
 from studio.models import Artwork
 from studio.motif import DEFAULTS, analysis_for, encoded, guide_for
@@ -22,24 +24,6 @@ from studio.quality import view_quality
 
 LIMIT = 350
 HEAD_MM = 3.0
-
-
-def normalized(route, dims):
-    w, h = dims
-    return [[2 * p["x_mm"] / w, 2 * p["y_mm"] / h] for p in route["anchors"]]
-
-
-def compact(route, dims):
-    pins = normalized(route, dims)
-    used = set(route["path"])
-    if len(used) < 3:
-        return False
-    s = route["settings"]
-    s["nail_positions"] = pins
-    s["start_anchor"] = sum(i in used for i in range(route["path"][0]))
-    s.update(base_ring=0, min_anchor_gap=1)
-    keep_used_nails(route, 0)
-    return True
 
 
 def importance(target, position):
@@ -70,11 +54,11 @@ def adapt_rim(pins, target, count):
     return [pins[i] for i in sorted(keep)]
 
 
-def material_score(reference, preview, route, dims, focus, rectangular):
+def with_nail_heads(preview, route, dims):
     # Approximate the visible opaque nail heads on the high-resolution thread preview.
     image = np.array(Image.open(BytesIO(preview)).convert("L"))
     h, w = image.shape
-    for x, y in normalized(route, dims):
+    for x, y in normalized_positions(route, dims):
         center = round((x + 1) * (w - 1) * 8), round((y + 1) * (h - 1) * 8)
         cv2.circle(
             image,
@@ -85,9 +69,11 @@ def material_score(reference, preview, route, dims, focus, rectangular):
             cv2.LINE_AA,
             4,
         )
-    q = view_quality(
-        reference, encoded(Image.fromarray(image), "PNG"), focus, rectangular
-    )
+    return image
+
+
+def material_score(reference, image, focus, rectangular):
+    q = view_quality(reference, encoded(Image.fromarray(image), "PNG"), focus, rectangular)
     target = np.asarray(Image.open(BytesIO(reference)).convert("L"))
     sh, sw = target.shape
     white = target >= 245
@@ -102,7 +88,7 @@ def material_score(reference, preview, route, dims, focus, rectangular):
     }
 
 
-def optimize(original, folder, log):
+def optimize(original, folder, log, review_dir=None):
     art = copy.copy(original)
     art.nail_positions = []
     art.passes = max(3, original.passes)
@@ -157,14 +143,17 @@ def optimize(original, folder, log):
             )
             return None
         route = json.loads((folder / "path.json").read_bytes())
-        full = normalized(route, dims)
+        full = normalized_positions(route, dims)
         preview = (folder / "preview.png").read_bytes()
         target = (folder / "target.png").read_bytes()
         if reference is None:
             reference = target
-        if compact(route, dims):
+            if review_dir is not None:
+                (review_dir / "target.png").write_bytes(reference)
+        if compact_route(route, dims):
+            material = with_nail_heads(preview, route, dims)
             score, metrics = material_score(
-                reference, preview, route, dims, focus, bool(art.rectangle)
+                reference, material, focus, bool(art.rectangle)
             )
             count = len(route["anchors"])
             assert (
@@ -173,6 +162,21 @@ def optimize(original, folder, log):
                 == len(route["settings"]["nail_positions"])
                 <= LIMIT
             )
+            if review_dir is not None:
+                stem = f"variant-{len(trials) + 1:02d}"
+                (review_dir / f"{stem}-threads.png").write_bytes(preview)
+                Image.fromarray(material).save(review_dir / f"{stem}-with-nails.png")
+                (review_dir / f"{stem}-route.json").write_text(
+                    json.dumps(route), encoding="utf-8"
+                )
+                metrics.update(
+                    files=stem,
+                    min_anchor_spacing_mm=min(
+                        math.hypot(a["x_mm"] - b["x_mm"], a["y_mm"] - b["y_mm"])
+                        for a, b in combinations(route["anchors"], 2)
+                    ),
+                    max_anchor_visits=max(Counter(route["path"]).values()),
+                )
             trials.append(
                 dict(
                     layout=name,
@@ -234,6 +238,11 @@ def optimize(original, folder, log):
         "assumed_head_mm": HEAD_MM,
         "trials": trials,
     }
+    if review_dir is not None:
+        (review_dir / "comparison.json").write_text(
+            json.dumps(route["optimization_350"], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     route["view_quality"] = view_quality(reference, preview, focus, bool(art.rectangle))
     return {
         "route": route,
@@ -258,6 +267,14 @@ class Command(BaseCommand):
             type=int,
             help="Motiv-IDs, standardmäßig die zwei jüngsten Originale",
         )
+        parser.add_argument(
+            "--review-dir",
+            type=Path,
+            help=(
+                "Exportiert Bildvorschauen, Fadenpfade und Bewertungen je Variante. "
+                "Berechnet den Vergleich bei Bedarf erneut und behält vorhandene Motive."
+            ),
+        )
 
     def handle(self, *args, **options):
         ids = options["ids"] or list(
@@ -273,12 +290,18 @@ class Command(BaseCommand):
                 previous_id=pk, state="ready", route__optimization_350__isnull=False
             )
             prior = completed.values_list("pk", flat=True).first()
-            if prior:
+            review_root = options["review_dir"]
+            if prior and review_root is None:
                 self.stdout.write(f"Motiv {pk}: fertige Variante /atelier/{prior}/")
                 continue
             self.stdout.write(f"Motiv {pk}: {original.title}")
+            review_dir = None
+            if review_root is not None:
+                review_root.mkdir(parents=True, exist_ok=True)
+                review_dir = Path(tempfile.mkdtemp(prefix=f"motiv-{pk}-", dir=review_root))
+                self.stdout.write(f"Vergleichsdateien: {review_dir}")
             with tempfile.TemporaryDirectory() as d:
-                result = optimize(original, Path(d), self.stdout.write)
+                result = optimize(original, Path(d), self.stdout.write, review_dir)
             with transaction.atomic():
                 winner = completed.first()
                 if winner is None:

@@ -81,3 +81,21 @@ def keep_used_nails(route, base_count):
         segment["from"] = ids[segment["from"]]
         segment["to"] = ids[segment["to"]]
     return len(keep) - base_count
+
+
+def normalized_positions(route, dims):
+    w, h = dims
+    return [[2 * p["x_mm"] / w, 2 * p["y_mm"] / h] for p in route["anchors"]]
+
+
+def compact_route(route, dims):
+    pins = normalized_positions(route, dims)
+    used = set(route["path"])
+    if len(used) < 3:
+        return False
+    s = route["settings"]
+    s["nail_positions"] = pins
+    s["start_anchor"] = sum(i in used for i in range(route["path"][0]))
+    s.update(base_ring=0, min_anchor_gap=1)
+    keep_used_nails(route, 0)
+    return True

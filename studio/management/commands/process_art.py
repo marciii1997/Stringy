@@ -11,7 +11,8 @@ from django.db import close_old_connections
 from django.db.models import Q
 from django.utils import timezone
 
-from studio.auto_nails import keep_used_nails, suggest_positions
+from studio.auto_nails import compact_route, keep_used_nails, suggest_positions
+from studio.handcraft import improve_winding_order, optimizer_flags
 from studio.models import Artwork
 from studio.motif import DEFAULTS, analysis_for, guide_for
 from studio.quality import view_quality
@@ -175,12 +176,148 @@ def process_one():
                         winner["route"]["previous_quality"] = view_quality(reference, image, priority, rectangular=bool(art.rectangle))
             if art.auto_nails:
                 winner["route"]["auto_nails"] = nail_search
+            if art.preparation.get("handcraft"):
+                route = winner["route"]
+                if winner["count"] < 24 or len(set(route["path"])) < 3:
+                    raise ValueError("Hand-winding requires at least 24 segments and three nails")
+                compact_route(route, art.field_size)
+                if winner["count"] == art.budget and time.monotonic() < deadline:
+                    if not refine_handcraft(art, source, folder, winner, reference, priority, deadline, renew):
+                        return True
+                    route = winner["route"]
+                improve_winding_order(route)
+                if not finish_layout(art, folder, winner, reference, priority, deadline, renew):
+                    return True
+                route = winner["route"]
+                from studio.nail_clearance import plan_winding_sides
+                plan_winding_sides(route)
+                winner["anchors"] = len(route["anchors"])
+                winner["nail_positions"] = route["settings"]["nail_positions"]
             winner["route"]["quality_trials"] = results
             claim.update(state=Artwork.State.READY, **winner)
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         claim.update(
             state=Artwork.State.FAILED, error=f"Berechnung fehlgeschlagen ({type(exc).__name__})."
         )
+    return True
+
+
+def refine_handcraft(art, source, folder, winner, reference, priority, deadline, renew):
+    from studio.management.commands.optimize_350 import material_score, with_nail_heads
+    from studio.optical import OpticalRefinement
+
+    route = winner["route"]
+    search = OpticalRefinement(route, reference, art.field_size)
+    rendered = with_nail_heads(winner["preview"], route, art.field_size)
+    best_score, _ = material_score(reference, rendered, priority, bool(art.rectangle))
+    directory = folder / "refinement"
+    directory.mkdir()
+    cmd = optimizer_command(art, source, directory, route["settings"]["raster_size"], route["settings"]["nail_positions"])
+    if "--base-ring" in cmd:
+        index = cmd.index("--base-ring")
+        del cmd[index:index + 2]
+    cmd[cmd.index("--passes") + 1] = "0"
+    seed = directory / "winding.json"
+    cmd.extend(["--initial-winding", str(seed), "--start-anchor", str(route["path"][0])])
+    trials = []
+    for edits in (12, 20, 32, 8) * 3:
+        if time.monotonic() >= deadline:
+            break
+        proposal = search.propose(winner["route"]["path"], rendered, edits)
+        if proposal == winner["route"]["path"]:
+            continue
+        seed.write_text(json.dumps(proposal))
+        try:
+            if not run_optimizer(cmd, deadline, renew):
+                return False
+        except (subprocess.SubprocessError, OSError):
+            break
+        candidate = json.loads((directory / "path.json").read_bytes())
+        preview = (directory / "preview.png").read_bytes()
+        simulation = with_nail_heads(preview, candidate, art.field_size)
+        score, _ = material_score(reference, simulation, priority, bool(art.rectangle))
+        trials.append(score)
+        if score > best_score:
+            winner["route"] = {**winner["route"], **candidate}
+            winner["route"]["view_quality"] = view_quality(reference, preview, priority, rectangular=bool(art.rectangle))
+            winner["preview"] = preview
+            rendered, best_score = simulation, score
+    winner["route"]["optical_trials"] = trials
+    return True
+
+
+def finish_layout(art, folder, winner, reference, priority, deadline, renew):
+    from copy import deepcopy
+    from math import dist
+
+    from studio.management.commands.optimize_350 import material_score, with_nail_heads
+    from studio.nail_clearance import placement_report, spread_close_nails
+
+    route = winner["route"]
+    initial = placement_report(route)
+    route["placement"] = initial
+    directory = folder / "placement"
+    directory.mkdir()
+    archive = directory / "route.json"
+    replay = [settings.STRINGY_BIN, "--replay", str(archive), "--output", str(directory)]
+    width = route["settings"]["thread_mm"]
+    profiles = ((.8 * width, .75), (width, route["settings"]["opacity"]), (1.2 * width, 1.0))
+
+    def evaluate(candidate):
+        scores = []
+        nominal = None
+        for index, (diameter, opacity) in enumerate(profiles):
+            profile = {**candidate["settings"], "thread_mm": diameter, "opacity": opacity}
+            archive.write_text(json.dumps({"settings": profile, "path": candidate["path"]}))
+            if not run_optimizer(replay, deadline, renew):
+                return None
+            preview = (directory / "preview.png").read_bytes()
+            image = with_nail_heads(preview, candidate, art.field_size)
+            score, metrics = material_score(reference, image, priority, bool(art.rectangle))
+            scores.append((score, metrics["ssim"], metrics["white_darkness"]))
+            if index == 1:
+                nominal = preview
+        return scores, nominal
+
+    try:
+        if time.monotonic() >= deadline:
+            return True
+        baseline = evaluate(route)
+        if baseline is None:
+            return False
+        scores, winner["preview"] = baseline
+        for seed in range(19, 31):
+            if time.monotonic() >= deadline:
+                break
+            positions = spread_close_nails(winner["route"], seed)
+            if not positions:
+                continue
+            candidate = deepcopy(winner["route"])
+            candidate["settings"]["nail_positions"] = positions
+            points = [(x * art.field_size[0] / 2, y * art.field_size[1] / 2) for x, y in positions]
+            for anchor, (x, y) in zip(candidate["anchors"], points):
+                anchor.update(x_mm=x, y_mm=y)
+            for edge in candidate["segments"]:
+                edge["length_mm"] = dist(points[edge["from"]], points[edge["to"]])
+            candidate["total_length_m"] = sum(e["length_mm"] for e in candidate["segments"]) / 1000
+            report = placement_report(candidate)
+            if report["spacing_deficit_mm"] >= winner["route"]["placement"]["spacing_deficit_mm"] - .1:
+                continue
+            if any(v > initial["uncertain_steps_by_radial_error_mm"][k]
+                   for k, v in report["uncertain_steps_by_radial_error_mm"].items()):
+                continue
+            result = evaluate(candidate)
+            if result is None:
+                return False
+            trial, preview = result
+            if all(s >= old[0] - .0003 and detail >= old[1] - .0005 and white <= old[2] + .00025
+                   for (s, detail, white), old in zip(trial, scores)):
+                candidate["placement"] = report
+                candidate["view_quality"] = view_quality(reference, preview, priority, rectangular=bool(art.rectangle))
+                candidate["material_scores"] = trial
+                winner.update(route=candidate, preview=preview)
+    except (subprocess.SubprocessError, OSError):
+        pass  # Keep the last complete geometry and its matching preview.
     return True
 
 
@@ -227,6 +364,10 @@ def optimizer_command(art, source, folder, size, positions=None):
         command.extend(["--anchors", str(art.anchors)])
     if art.preparation.get("pad"):
         command.append("--pad-crop")
+    if art.preparation.get("handcraft"):
+        command.extend(optimizer_flags())
+        if not art.rectangle:
+            command.extend(["--shaft-mm", str(art.shaft_mm)])
     return command
 
 

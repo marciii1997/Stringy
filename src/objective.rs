@@ -32,7 +32,7 @@ pub(super) struct Scratch {
 impl Objective {
     #[cfg(test)]
     pub fn new(canvas: &Canvas, target: &[f32], emphasis: f32) -> Self {
-        Self::guided(canvas, target, emphasis, None)
+        Self::guided(canvas, target, emphasis, None, 0.0)
     }
 
     pub fn guided(
@@ -40,6 +40,7 @@ impl Objective {
         target: &[f32],
         emphasis: f32,
         guide: Option<&image::RgbImage>,
+        white_protection: f32,
     ) -> Self {
         // Normalize the local mean by the circle mask so the rim is not a false edge.
         let image = canvas.render_area(target, canvas.size, canvas.size);
@@ -59,7 +60,9 @@ impl Objective {
             .zip(coverage.as_raw())
             .map(|((&tone, &light), &area)| {
                 let mean = f32::from(255 - light) / f32::from(area.max(1));
-                1.0 + emphasis * ((tone - mean).abs() * 5.0).min(2.0).powi(2)
+                let near_white = ((0.14 - tone) / 0.14).clamp(0.0, 1.0);
+                (1.0 + emphasis * ((tone - mean).abs() * 5.0).min(2.0).powi(2))
+                    * (1.0 + white_protection * near_white)
             })
             .collect();
         let mut neighbors = Vec::new();

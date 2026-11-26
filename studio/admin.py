@@ -85,6 +85,16 @@ class ArtworkAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         return self.get_fields(request, obj)[1:] if obj else ()
 
+    def get_fieldsets(self, request, obj=None):
+        if obj is not None:
+            return super().get_fieldsets(request, obj)
+        essentials = ("title", "photo", "canvas_format", "canvas_width", "canvas_height")
+        advanced = tuple(field for field in self.get_fields(request) if field not in essentials)
+        return (
+            (None, {"fields": essentials}),
+            ("Weitere Einstellungen", {"fields": advanced, "classes": ("collapse",)}),
+        )
+
     @admin.display(description="Vorschau")
     def simulation(self, obj):
         if obj.state == Artwork.State.READY:

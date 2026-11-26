@@ -2,7 +2,14 @@
 {% block content %}
   <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
-  {% if perms.studio.add_artwork %}<p><a href="{% url 'motif' art.pk %}">Motiv bearbeiten und Varianten vergleichen</a></p>{% endif %}
+  {% if perms.studio.add_artwork %}
+  {% if not art.preparation.handcraft %}
+  <form method="post" action="{% url 'handcraft' art.pk %}">
+    {% csrf_token %}<button>Für 24 Tage zum Handfädeln berechnen</button>
+  </form>
+  {% endif %}
+  <p><a href="{% url 'motif' art.pk %}">Bildausschnitt und Motiv bearbeiten</a></p>
+  {% endif %}
   {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}
   <p>Berechnung #{{ art.pk }} · Optimierer {{ art.route.optimizer_version|default:"1" }}</p>
   {% if art.preparation.style == "smooth" %}<p>Bildstil · Sanft vereinfacht</p>{% elif art.preparation.style == "poster" %}<p>Bildstil · Plakat mit sechs Graustufen</p>{% endif %}
@@ -27,7 +34,7 @@
     <ul>{% for trial in art.route.quality_trials %}<li>{{ trial.raster }} px · {% if trial.proposed %}{{ trial.proposed }} Zusatznägel geprüft · {% endif %}{% if trial.error %}Berechnung abgebrochen{% else %}SSIM {{ trial.ssim|floatformat:3 }} · Tonwertfehler {{ trial.tone_rmse|floatformat:3 }} · {{ trial.count }} Verbindungen{% endif %}</li>{% endfor %}</ul>
   </details>
   {% endif %}
-  {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}
+  {% if perms.studio.add_artwork %}<details><summary>Manuelle Berechnung</summary><p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p></details>{% endif %}
   {% if art.previous_id %}<p><a href="{% url 'simulation' art.previous_id %}">Vorherige Berechnung #{{ art.previous_id }} ansehen</a></p>{% endif %}
   <div class="spread">
     <div>

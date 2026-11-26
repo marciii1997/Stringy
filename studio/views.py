@@ -10,6 +10,7 @@ from django.views.decorators.http import require_POST
 from PIL import Image
 
 from .forms import CalculationForm
+from . import handcraft
 from .laser import LaserForm, laser_svg
 from .models import Artwork, Calendar
 
@@ -62,6 +63,12 @@ def door(request, pk, day):
     path = gift.artwork.route["path"][: end + 1]
     active = day == gift.finished + 1
     cursor = start + gift.step if active else end
+    directions = gift.artwork.route.get("winding_sides", [])
+    def winding_direction(index):
+        if 0 <= index < len(directions):
+            return {"cw": "im Uhrzeigersinn", "ccw": "gegen den Uhrzeigersinn"}.get(directions[index])
+        return None
+
     return render(
         request,
         "studio/door.html",
@@ -69,8 +76,13 @@ def door(request, pk, day):
             "gift": gift,
             "day": day,
             "sequence": path[start:],
+            "day_directions": [
+                (pin, winding_direction(index)) for index, pin in enumerate(path[start:], start)
+            ] if len(directions) >= end + 1 else None,
             "active": active,
             "current": path[cursor],
+            "current_direction": winding_direction(cursor),
+            "following_direction": winding_direction(cursor + 1) if cursor < end else None,
             "following": path[cursor + 1] if cursor < end else None,
             "count": end - start,
             "playback": {
@@ -156,6 +168,37 @@ def simulation(request, pk):
 
 @private_artwork
 @permission_required("studio.add_artwork", raise_exception=True)
+@require_POST
+def handcraft_variant(request, pk):
+    art = get_object_or_404(Artwork, pk=pk, state=Artwork.State.READY)
+    positions = art.winding_positions
+    if len(positions) > handcraft.MAX_NAILS:
+        positions = []
+    values = {field: getattr(art, field) for field in CalculationForm.Meta.fields}
+    values.update(
+        title=f"{art.title[:82]} · Handfädeln",
+        thread=handcraft.THREAD_MM,
+        shaft_mm=handcraft.SHAFT_MM,
+        opacity=handcraft.OPACITY,
+        budget=handcraft.SEGMENTS,
+        detail=4,
+        passes=3,
+        quality_search=False,
+        auto_nails=0,
+        anchors=len(positions) or min(art.anchors, handcraft.MAX_NAILS),
+        nail_positions=positions,
+    )
+    variant = Artwork.objects.create(
+        **values,
+        source=art.source,
+        previous=art,
+        preparation={"handcraft": True, "pad": art.preparation.get("pad", False)},
+    )
+    return redirect("simulation", pk=variant.pk)
+
+
+@private_artwork
+@permission_required("studio.add_artwork", raise_exception=True)
 def recalculate(request, pk):
     art = get_object_or_404(Artwork.objects.defer("target", "preview", "route", "source"), pk=pk)
     initial = {field: getattr(art, field) for field in CalculationForm.Meta.fields}
@@ -169,7 +212,7 @@ def recalculate(request, pk):
     if form.is_valid():
         variant = form.save(commit=False)
         variant.source = art.source
-        variant.preparation = art.preparation
+        variant.preparation = {key: value for key, value in art.preparation.items() if key != "handcraft"}
         variant.previous = art
         variant.save()
         return redirect("simulation", pk=variant.pk)

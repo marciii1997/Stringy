@@ -49,6 +49,11 @@ pub struct Settings {
     pub max_segments: usize,
     pub raster_size: usize,
     pub min_anchor_gap: usize,
+    pub min_segment_mm: f64,
+    /// Maximum number of incident thread ends at one nail. Zero means unlimited.
+    pub max_nail_load: usize,
+    pub max_chord_uses: u32,
+    pub white_protection: f32,
     pub start_anchor: usize,
     pub repeat_penalty: f64,
     pub cache_mib: usize,
@@ -75,6 +80,10 @@ impl Default for Settings {
             max_segments: 12_000,
             raster_size: 512,
             min_anchor_gap: 8,
+            min_segment_mm: 0.0,
+            max_nail_load: 0,
+            max_chord_uses: 0,
+            white_protection: 0.0,
             start_anchor: 0,
             repeat_penalty: 0.0005,
             cache_mib: 384,
@@ -201,6 +210,12 @@ impl Settings {
         }
         if self.max_segments > 100_000 {
             return Err(InvalidInput("maximum segment count must be at most 100000"));
+        }
+        if !self.min_segment_mm.is_finite() || self.min_segment_mm < 0.0 {
+            return Err(InvalidInput("minimum segment length must be finite and nonnegative"));
+        }
+        if !(0.0..=20.0).contains(&self.white_protection) {
+            return Err(InvalidInput("white protection must be between zero and 20"));
         }
         if !self.repeat_penalty.is_finite() || self.repeat_penalty < 0.0 {
             return Err(InvalidInput(
@@ -347,11 +362,9 @@ impl Lines {
                 {
                     continue;
                 }
-                if clearance > 0.0
-                    && (canvas.anchors[to].x_mm - canvas.anchors[from].x_mm)
-                        .hypot(canvas.anchors[to].y_mm - canvas.anchors[from].y_mm)
-                        < clearance
-                {
+                let length_mm = (canvas.anchors[to].x_mm - canvas.anchors[from].x_mm)
+                    .hypot(canvas.anchors[to].y_mm - canvas.anchors[from].y_mm);
+                if length_mm < clearance.max(settings.min_segment_mm) {
                     continue;
                 }
                 let id = lines.len();
@@ -363,8 +376,6 @@ impl Lines {
                     anchor: from,
                     line: id,
                 });
-                let length_mm = (canvas.anchors[to].x_mm - canvas.anchors[from].x_mm)
-                    .hypot(canvas.anchors[to].y_mm - canvas.anchors[from].y_mm);
                 let start = cache.len();
                 if cache_has_room {
                     scratch.clear();
@@ -476,18 +487,32 @@ struct Search<'a> {
     settings: &'a Settings,
     image: Objective,
     repeats: Vec<u32>,
+    nail_loads: Vec<usize>,
     scratch: Vec<objective::Scratch>,
     exact_after_bridge: bool,
 }
 
 impl Search<'_> {
+    fn can_add(&self, id: usize) -> bool {
+        let (a, b) = self.lines.lines[id].endpoints;
+        let cap = self.settings.max_nail_load;
+        let chord_cap = self.settings.max_chord_uses;
+        (cap == 0 || (self.nail_loads[a] < cap && self.nail_loads[b] < cap))
+            && (chord_cap == 0 || self.repeats[id] < chord_cap)
+    }
+
     fn change(&mut self, id: usize, add: bool) {
         self.image
             .change(self.canvas, self.lines, id, self.settings.opacity, add);
+        let (a, b) = self.lines.lines[id].endpoints;
         if add {
             self.repeats[id] += 1;
+            self.nail_loads[a] += 1;
+            self.nail_loads[b] += 1;
         } else {
             self.repeats[id] -= 1;
+            self.nail_loads[a] -= 1;
+            self.nail_loads[b] -= 1;
         }
     }
 
@@ -503,9 +528,16 @@ impl Search<'_> {
     }
 
     fn pair_gain(&mut self, first: usize, second: usize) -> f64 {
+        if !self.can_add(first) {
+            return f64::NEG_INFINITY;
+        }
         let one = self.gain(first);
         self.change(first, true);
-        let two = self.gain(second);
+        let two = if self.can_add(second) {
+            self.gain(second)
+        } else {
+            f64::NEG_INFINITY
+        };
         self.change(first, false);
         one + two
     }
@@ -529,7 +561,14 @@ impl Search<'_> {
     }
 
     fn next(&mut self, from: usize, remaining: usize) -> Option<Move> {
-        let mut candidates: Vec<_> = self.lines.moves[from].iter().map(|&m| (0.0, m)).collect();
+        let mut candidates: Vec<_> = self.lines.moves[from]
+            .iter()
+            .filter(|m| self.can_add(m.line))
+            .map(|&m| (0.0, m))
+            .collect();
+        if candidates.is_empty() {
+            return None;
+        }
         let by_score = |(sa, a): &(f64, Move), (sb, b): &(f64, Move)| {
             sb.total_cmp(sa).then_with(|| a.anchor.cmp(&b.anchor))
         };
@@ -571,6 +610,9 @@ impl Search<'_> {
         ) {
             self.change(first.line, true);
             for second in &self.lines.moves[first.anchor] {
+                if !self.can_add(second.line) {
+                    continue;
+                }
                 let combined = first_gain + self.gain(second.line);
                 if combined > best {
                     best = combined;
@@ -640,6 +682,18 @@ pub fn generate_with_ink(
     settings: &Settings,
     guide: Option<&image::RgbImage>,
     background_ink: Option<&GrayImage>,
+    progress: impl FnMut(Progress) -> ControlFlow<()>,
+) -> Result<Artwork, InvalidInput> {
+    generate_from_winding(source, settings, guide, background_ink, None, progress)
+}
+
+/// Refine an existing continuous winding on the supplied nail layout.
+pub fn generate_from_winding(
+    source: &DynamicImage,
+    settings: &Settings,
+    guide: Option<&image::RgbImage>,
+    background_ink: Option<&GrayImage>,
+    initial: Option<&[usize]>,
     mut progress: impl FnMut(Progress) -> ControlFlow<()>,
 ) -> Result<Artwork, InvalidInput> {
     if source.width() == 0 || source.height() == 0 {
@@ -675,7 +729,7 @@ pub fn generate_with_ink(
             }
         }
     }
-    let image = Objective::guided(&canvas, &target, settings.detail, guide);
+    let image = Objective::guided(&canvas, &target, settings.detail, guide, settings.white_protection);
     let initial_rmse = rmse(&canvas, &target, &image.current);
     let lines = Lines::new(&canvas, settings);
     let scratch = (0..settings.anchors.div_ceil(32))
@@ -689,9 +743,26 @@ pub fn generate_with_ink(
         image,
         exact_after_bridge: false,
         repeats: vec![0; lines.lines.len()],
+        nail_loads: vec![0; settings.anchors],
         scratch,
     };
     let mut path = vec![settings.start_anchor];
+    if let Some(seed) = initial {
+        if seed.first() != Some(&settings.start_anchor)
+            || seed.len() - 1 > settings.max_segments
+            || seed.iter().any(|&n| n >= settings.anchors)
+        {
+            return Err(InvalidInput("invalid initial winding"));
+        }
+        for pair in seed.windows(2) {
+            let id = lines.id(pair[0], pair[1]).ok_or(InvalidInput("initial winding contains an infeasible segment"))?;
+            if !search.can_add(id) {
+                return Err(InvalidInput("initial winding exceeds material limits"));
+            }
+            search.change(id, true);
+        }
+        path = seed.to_vec();
+    }
     let mut passes = 0;
     let mut exchanges = 0;
     let stop_reason = loop {
@@ -714,6 +785,11 @@ pub fn generate_with_ink(
             continue;
         }
         if passes < settings.passes {
+            if initial.is_some() {
+                search.rewire(&mut path, passes);
+                passes += 1;
+                continue;
+            }
             let moved = search.refine(&mut path);
             let exchanged = search.exchange(&mut path, passes);
             exchanges += usize::from(exchanged);
@@ -763,6 +839,52 @@ pub fn generate_with_ink(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hand_winding_bounds_are_preserved_through_refinement() {
+        let settings = Settings {
+            anchors: 36,
+            rectangle_mm: Some([120.0, 160.0]),
+            shaft_mm: Some(1.2),
+            raster_size: 64,
+            min_anchor_gap: 1,
+            min_segment_mm: 24.0,
+            max_nail_load: 6,
+            max_chord_uses: 2,
+            white_protection: 4.0,
+            max_segments: 100,
+            ..Settings::default()
+        };
+        let photo = DynamicImage::ImageLuma8(GrayImage::from_pixel(64, 64, image::Luma([80])));
+        let route = generate(&photo, &settings, |_| ControlFlow::Continue(())).unwrap().route;
+        assert!(route.segments.len() >= 24);
+        let mut seeded_settings = settings.clone();
+        seeded_settings.max_segments = route.path.len() - 1;
+        let rewired = generate_from_winding(
+            &photo, &seeded_settings, None, None, Some(&route.path),
+            |_| ControlFlow::Continue(()),
+        ).unwrap().route;
+        assert_eq!(rewired.path.first(), route.path.first());
+        assert_eq!(rewired.path.last(), route.path.last());
+        let mut expected = route.path.clone();
+        let mut actual = rewired.path.clone();
+        expected.sort_unstable();
+        actual.sort_unstable();
+        assert_eq!(actual, expected);
+        assert!(generate_from_winding(
+            &photo, &settings, None, None, Some(&[0, 0]),
+            |_| ControlFlow::Continue(()),
+        ).is_err());
+        let mut loads = vec![0; settings.anchors];
+        let mut chords = std::collections::HashMap::new();
+        for segment in rewired.segments {
+            assert!(segment.length_mm >= settings.min_segment_mm);
+            loads[segment.from] += 1;
+            loads[segment.to] += 1;
+            *chords.entry((segment.from.min(segment.to), segment.from.max(segment.to))).or_insert(0) += 1;
+        }
+        assert!(loads.into_iter().all(|n| n <= settings.max_nail_load));
+        assert!(chords.into_values().all(|n| n <= settings.max_chord_uses));
+    }
     use super::*;
     use image::{Luma, Rgba, RgbaImage};
 
@@ -874,7 +996,7 @@ mod tests {
         let guide = image::RgbImage::from_pixel(n as u32, n as u32, image::Rgb([0, 0, 255]));
         let lines = Lines::new(&canvas, &settings);
         let mut baseline = Objective::new(&canvas, &target, 0.0);
-        let mut guided = Objective::guided(&canvas, &target, 0.0, Some(&guide));
+        let mut guided = Objective::guided(&canvas, &target, 0.0, Some(&guide), 0.0);
         let loss = |current: &[f32]| {
             let mut loss = 0.0;
             for i in 0..target.len() {
@@ -1020,6 +1142,7 @@ mod tests {
             image,
             exact_after_bridge: false,
             repeats: vec![0; lines.lines.len()],
+            nail_loads: vec![0; settings.anchors],
             scratch,
         };
         let id = lines.id(0, 16).unwrap();

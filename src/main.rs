@@ -9,7 +9,7 @@ use std::{
 
 use clap::Parser;
 use image::{DynamicImage, ImageDecoder, ImageReader, Limits};
-use stringy::{Settings, generate_with_ink, render_preview};
+use stringy::{Settings, generate_from_winding, render_preview};
 
 #[derive(Parser)]
 #[command(
@@ -23,6 +23,9 @@ struct Args {
     /// Render a saved path.json to preview.png using the archived thread and anchors.
     #[arg(long)]
     replay: Option<PathBuf>,
+    /// JSON array of initial nail IDs in the specified layout, for 2-opt refinement.
+    #[arg(long, conflicts_with = "replay")]
+    initial_winding: Option<PathBuf>,
     /// Optional RGB guidance PNG aligned with the final nail-field raster.
     #[arg(long)]
     guide: Option<PathBuf>,
@@ -86,6 +89,18 @@ struct Args {
     /// Minimum circular distance in anchors (default: 8, reduced for small anchor counts).
     #[arg(long)]
     min_anchor_gap: Option<usize>,
+    /// Minimum straight-line distance between connected nails, in mm.
+    #[arg(long, default_value_t = Settings::default().min_segment_mm)]
+    min_segment_mm: f64,
+    /// Maximum incident thread ends per nail, or zero for unlimited.
+    #[arg(long, default_value_t = Settings::default().max_nail_load)]
+    max_nail_load: usize,
+    /// Maximum uses of an undirected chord, or zero for unlimited.
+    #[arg(long, default_value_t = Settings::default().max_chord_uses)]
+    max_chord_uses: u32,
+    /// Additional weight assigned to near-white tones.
+    #[arg(long, default_value_t = Settings::default().white_protection)]
+    white_protection: f32,
     /// Starting nail ID. Automatic plans start at the top of the circle or top left of the rectangle.
     #[arg(long, default_value_t = Settings::default().start_anchor)]
     start_anchor: usize,
@@ -143,6 +158,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             })
         },
         base_ring: args.base_ring.unwrap_or(0),
+        min_segment_mm: args.min_segment_mm,
+        max_nail_load: args.max_nail_load,
+        max_chord_uses: args.max_chord_uses,
+        white_protection: args.white_protection,
         nail_positions,
         diameter_mm: args.diameter_mm,
         shaft_mm: args.shaft_mm.or(args.rectangle_mm.as_ref().map(|_| 1.2)),
@@ -188,11 +207,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map(image::open)
         .transpose()?
         .map(|im| im.into_luma8());
-    let art = generate_with_ink(
+    let initial: Option<Vec<usize>> = args.initial_winding.map(|p| -> Result<_, Box<dyn Error>> {
+        Ok(serde_json::from_reader(File::open(p)?)?)
+    }).transpose()?;
+    let art = generate_from_winding(
         &source,
         &settings,
         guide.as_ref(),
         ink.as_ref(),
+        initial.as_deref(),
         |progress| {
             if progress.segments > 0 && progress.segments % 1000 == 0 {
                 eprintln!("{} segments", progress.segments);

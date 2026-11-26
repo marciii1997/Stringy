@@ -150,6 +150,23 @@ class CalendarTests(TestCase):
         self.assertEqual(self.art.zoom, 1)
 
 
+    def test_handcraft_creates_a_bounded_variant(self):
+        from .handcraft import MAX_NAILS, SEGMENTS, THREAD_MM
+
+        self.client.force_login(self.admin)
+        url = reverse("handcraft", args=[self.art.pk])
+        self.assertEqual(self.client.get(url).status_code, 405)
+        response = self.client.post(url)
+        variant = Artwork.objects.get(previous=self.art)
+        self.assertRedirects(response, reverse("simulation", args=[variant.pk]))
+        self.assertTrue(variant.preparation["handcraft"])
+        self.assertEqual((variant.anchors, variant.budget, variant.thread), (MAX_NAILS, SEGMENTS, THREAD_MM))
+        self.assertEqual(variant.auto_nails, 0)
+        self.assertFalse(variant.quality_search)
+        self.gift.refresh_from_db()
+        self.assertEqual(self.gift.artwork_id, self.art.pk)
+
+
 class WorkerTests(TestCase):
     def test_stale_claim_is_recovered_while_active_claim_is_preserved(self):
         from datetime import timedelta
