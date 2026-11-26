@@ -93,7 +93,7 @@ def spread_close_nails(route, seed):
     return (2 * points / dims).tolist() if moved else None
 
 
-def plan_winding_sides(route):
+def plan_winding_sides(route, reference=None):
     """Choose a consistent clockwise/counterclockwise traversal at each visit.
 
     Board coordinates have y increasing downwards. A tangent offset to the
@@ -135,9 +135,24 @@ def plan_winding_sides(route):
                 margins[sl, i, j] = gaps.min(axis=1) - radius
                 nearest[sl, i, j] = gaps.argmin(axis=1)
     costs = np.maximum(0, displacement[:, None, None] - margins)
-    # Lexicographic objective: uncertainties, total deficit, then wrapped angle.
+    # For incremental optical edits, prefer the already tested tangents of
+    # surviving chords. Reversing travel negates both tangent signs.
+    changes = np.zeros_like(costs, dtype=np.int8)
+    if reference is not None:
+        old = reference["path"]
+        old_sides = [int(s == "ccw") for s in reference["winding_sides"]]
+        known = {}
+        for u, v, i, j in zip(old, old[1:], old_sides, old_sides[1:]):
+            known.setdefault((u, v), set()).add((i, j))
+            known.setdefault((v, u), set()).add((1 - j, 1 - i))
+        for n, pair in enumerate(zip(a, b)):
+            if pair in known:
+                changes[n] = 1
+                for i, j in known[pair]:
+                    changes[n, i, j] = 0
+    # Minimize uncertainty count, deficit, tangent changes, then wrapped angle.
     parent = np.empty((len(a), 2, 2), dtype=np.int8)
-    previous = {(i, j): (int(costs[0, i, j] > 0), costs[0, i, j], 0.)
+    previous = {(i, j): (int(costs[0, i, j] > 0), costs[0, i, j], int(changes[0, i, j]), 0.)
                 for i in range(2) for j in range(2)}
     for edge in range(1, len(a)):
         current = {}
@@ -145,15 +160,20 @@ def plan_winding_sides(route):
             for j in range(2):
                 candidates = []
                 for h in range(2):
-                    count, deficit, wrap = previous[h, i]
+                    count, deficit, changed, wrap = previous[h, i]
                     arc = (-sides[i] * (angles[edge, i, j] - angles[edge - 1, h, i])) % (2 * np.pi)
-                    candidates.append((count + int(costs[edge, i, j] > 0), deficit + costs[edge, i, j], wrap + arc))
+                    candidates.append((
+                        count + int(costs[edge, i, j] > 0),
+                        deficit + costs[edge, i, j],
+                        changed + int(changes[edge, i, j]),
+                        wrap + arc,
+                    ))
                 choice = min(range(2), key=candidates.__getitem__)
                 current[i, j] = candidates[choice]
                 parent[edge, i, j] = choice
         previous = current
     i, j = min(previous, key=previous.__getitem__)
-    count, _, total_arc = previous[i, j]
+    count, _, _, total_arc = previous[i, j]
     schedule = np.empty(len(path), dtype=int)
     schedule[-2:] = i, j
     for edge in range(len(a) - 1, 0, -1):

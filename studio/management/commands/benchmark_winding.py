@@ -9,7 +9,8 @@ from django.core.management.base import BaseCommand, CommandError
 from PIL import Image, ImageDraw
 
 from studio.nail_clearance import placement_report, plan_winding_sides
-from studio.physical import assess, simulation
+from studio.physical import assess, png, simulation
+from studio.quality import view_quality
 from studio.winding_study import CAT_REGIONS as CAT
 
 
@@ -50,6 +51,7 @@ class Command(BaseCommand):
                 dict(
                     file=str(path),
                     **metrics,
+                    ssim=view_quality(target_bytes, png(image), rectangular=True)["ssim"],
                     nails=len(route["anchors"]),
                     steps=len(route["path"]) - 1,
                     **placement_report(route),

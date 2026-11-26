@@ -107,7 +107,7 @@ def crossings(route, target):
     return runs
 
 
-def rebuilt(route, path):
+def rebuilt(route, path, preserve_tangents=False):
     candidate = route.copy()
     points = np.array([(a["x_mm"], a["y_mm"]) for a in route["anchors"]])
     lengths = np.linalg.norm(np.diff(points[path], axis=0), axis=1)
@@ -121,7 +121,7 @@ def rebuilt(route, path):
     # The engine RMSE and ordering diagnostics describe the pre-edit path.
     for key in ("final_rmse", "winding_order", "view_quality", "optical_trials"):
         candidate.pop(key, None)
-    plan_winding_sides(candidate)
+    plan_winding_sides(candidate, route if preserve_tangents else None)
     return candidate
 
 

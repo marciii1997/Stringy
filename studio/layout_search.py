@@ -75,9 +75,14 @@ def automatic(art, source, folder, renew, save):
         "refine",
         "lookahead",
         "polish",
+        "fidelity",
     ]
     if art.preparation.get("refine_saved_winding") and art.previous_id:
-        stages = ["archive", "polish"]
+        previous = art.previous.route
+        certified = previous.get("winding_clearance", {}).get(
+            "uncertified_steps"
+        ) == 0 and previous.get("winding_sides")
+        stages = ["archive", "fidelity"] if certified else ["archive", "polish", "fidelity"]
         target = bytes(art.previous.target)
     for index in range(len(trials), len(stages)):
         stage = stages[index]
@@ -90,20 +95,29 @@ def automatic(art, source, folder, renew, save):
                 candidate = art.previous.route.copy()
                 candidate.pop("calendar_import", None)
                 candidate.pop("layout_search", None)
-            elif stage == "polish":
+            elif stage in ("polish", "fidelity"):
 
                 def active():
                     return time.monotonic() < deadline and renew()
 
-                candidate = polish(
-                    best,
-                    target,
-                    registered_regions(best, target),
-                    rounds=256 if art.preparation.get("refine_saved_winding") else 24,
-                    alive=active,
-                )
-                trials.append({"stage": stage, **candidate["polish"]})
-                best = candidate
+                if stage == "polish":
+                    candidate = polish(
+                        best,
+                        target,
+                        registered_regions(best, target),
+                        rounds=256 if art.preparation.get("refine_saved_winding") else 24,
+                        alive=active,
+                    )
+                    trials.append({"stage": stage, **candidate["polish"]})
+                else:
+                    from studio.fidelity import optimize_fidelity
+
+                    candidate = optimize_fidelity(best, target, active)
+                    trials.append({"stage": stage, "selected": candidate is not best})
+                if candidate["physical_quality"]["score"] >= best["physical_quality"]["score"]:
+                    best = candidate
+                else:
+                    trials[-1]["selected"] = False
                 best["layout_search"] = {"trials": trials}
                 if not save(route=best, target=target):
                     return
@@ -154,7 +168,7 @@ def automatic(art, source, folder, renew, save):
                         return
                     candidate = original["route"]
                 improve_winding_order(candidate)
-            plan_winding_sides(candidate)
+            plan_winding_sides(candidate, art.previous.route if stage == "archive" else None)
             view = simulation(candidate)
             metrics = assess(target, view)
             if stage.startswith("seed"):
@@ -203,4 +217,5 @@ def automatic(art, source, folder, renew, save):
         anchors=len(best["anchors"]),
         nail_positions=best["settings"]["nail_positions"],
         count=len(best["path"]) - 1,
+        budget=max(art.budget, len(best["path"]) - 1),
     )

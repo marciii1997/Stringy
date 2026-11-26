@@ -419,3 +419,27 @@ Budgets vollständig bewertete Lauf. Auf einem langsameren Rechner ein höheres
 Budget wählen. Die drei öffentlichen Testmotive prüfen Porträtkontrast,
 Himmelsflächen und feine Konturen. GitHub Actions speichert deren
 Vergleichsbilder und Messwerte als Artefakt.
+
+### Tonwerttreue und zusätzlicher Fädelaufwand
+
+Ist die Simulation eines rechteckigen Handfädelplans deutlich heller als die Vorlage,
+kann der Worker auf demselben Brett Besuche einfügen, verschieben und Verbindungen
+tauschen. Er prüft höchstens 30 % zusätzliche Schritte bis zu einer Gesamtzahl
+von 3.900. Für einen längeren Pfad muss der Tonwertfehler gegenüber der bisherigen
+Version beim eingestellten Material um mindestens 15 % sinken. Gemessen wird
+der quadratische Mittelwertfehler (RMSE) der Grauwerte nach einer leichten
+Weichzeichnung. Das berücksichtigt das Zusammenwirken benachbarter Fäden
+aus Betrachtungsabstand. Bezugsbild im Worker ist der vorbereitete Bildausschnitt.
+Für einen Vergleich gegen das Foto kann `benchmark_winding` stattdessen den
+deckungsgleichen Ausschnitt aus dem Original als `--target` verwenden.
+
+Zusätzlich bewertet der Worker die lokale Strukturähnlichkeit (SSIM), helle
+Flächen, registrierte Detailregionen und den Freigang jedes Fadens an fremden
+Schäften. Der Vergleichsbefehl gibt RMSE und SSIM getrennt aus. Ein Wertgewinn
+bei einem Fadenprofil kann bei einem anderen kleiner ausfallen oder sich umkehren.
+Die im Modell verwendeten Deckkräfte sind Annahmen über das Garn.
+
+Die Strukturmessung orientiert sich an [Wang et al. (2004)](https://doi.org/10.1109/TIP.2003.819861)
+und der [Referenzimplementierung in scikit-image](https://github.com/scikit-image/scikit-image/blob/v0.25.2/skimage/metrics/_structural_similarity.py).
+Ein Vergleichsbeispiel für die verbreitete Auswahl der jeweils stärksten
+Restbildlinie liefert [StringArtGenerator](https://github.com/halfmonty/StringArtGenerator/blob/master/main.go).
