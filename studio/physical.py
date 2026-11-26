@@ -7,25 +7,34 @@ import numpy as np
 from PIL import Image
 
 
-def simulation(route, size=512, thread_scale=1.0, opacity=None):
-    settings = route["settings"]
-    dims = np.array(settings["rectangle_mm"])
-    scale = (size - 1) / max(dims)
-    width, height = np.round(dims * scale).astype(int) + 1
+def tangent_points(route, thread):
+    """Segment endpoints in board millimetres, including the side of each wrap."""
     points = np.array([(pin["x_mm"], pin["y_mm"]) for pin in route["anchors"]])
     path = np.array(route["path"])
-    side = np.array([1 if direction == "ccw" else -1 for direction in route["winding_sides"]])
-    thread = settings["thread_mm"] * thread_scale
-    transmission = 1 - (settings["opacity"] if opacity is None else opacity)
-    radius = (settings["shaft_mm"] + thread) / 2
+    side = np.where(np.array(route["winding_sides"]) == "ccw", 1, -1)
+    radius = (route["settings"]["shaft_mm"] + thread) / 2
     delta = np.diff(points[path], axis=0)
     length = np.linalg.norm(delta, axis=1)
     unit = delta / length[:, None]
     offset = radius * (side[:-1] - side[1:]) / length
     perpendicular = unit[:, ::-1] * np.array([-1, 1])
     normal = offset[:, None] * unit + np.sqrt(1 - offset**2)[:, None] * perpendicular
-    starts = (points[path[:-1]] + radius * side[:-1, None] * normal + dims / 2) * scale
-    ends = (points[path[1:]] + radius * side[1:, None] * normal + dims / 2) * scale
+    return (
+        points,
+        points[path[:-1]] + radius * side[:-1, None] * normal,
+        points[path[1:]] + radius * side[1:, None] * normal,
+    )
+
+
+def simulation(route, size=512, thread_scale=1.0, opacity=None):
+    settings = route["settings"]
+    dims = np.array(settings["rectangle_mm"])
+    scale = (size - 1) / max(dims)
+    width, height = np.round(dims * scale).astype(int) + 1
+    thread = settings["thread_mm"] * thread_scale
+    transmission = 1 - (settings["opacity"] if opacity is None else opacity)
+    points, starts, ends = tangent_points(route, thread)
+    starts, ends = (starts + dims / 2) * scale, (ends + dims / 2) * scale
 
     samples = 4
     gray = np.ones((height * samples, width * samples), dtype=np.float32)

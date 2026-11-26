@@ -15,3 +15,12 @@ jobs:
         env:
           DJANGO_SECRET_KEY: ci-ephemeral
           STRINGY_RELEASE_CHECK: '1'
+      - run: python manage.py winding_trials --verify --output regression
+        env:
+          DJANGO_SECRET_KEY: ci-ephemeral
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winding-regression
+          path: |
+            regression/messung.json
+            regression/*/vergleich.png

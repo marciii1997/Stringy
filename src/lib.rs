@@ -56,6 +56,7 @@ pub struct Settings {
     pub white_protection: f32,
     pub start_anchor: usize,
     pub repeat_penalty: f64,
+    pub lookahead: bool,
     pub cache_mib: usize,
 }
 
@@ -86,6 +87,7 @@ impl Default for Settings {
             white_protection: 0.0,
             start_anchor: 0,
             repeat_penalty: 0.0005,
+            lookahead: false,
             cache_mib: 384,
         }
     }
@@ -584,6 +586,26 @@ impl Search<'_> {
         }
         self.score_moves(&mut candidates[..exact]);
         candidates[..exact].sort_unstable_by(by_score);
+        // At ambiguous decisions compare two-step continuations after applying
+        // each first chord, including its actual residual, repeat and load costs.
+        if self.settings.lookahead && remaining > 1 && remaining % 8 == 0
+            && exact >= 2 && candidates[1].0 > 0.8 * candidates[0].0
+            && candidates[0].0 > MIN_GAIN {
+            let mut best = (f64::NEG_INFINITY, candidates[0].1);
+            for &(gain, first) in candidates.iter().take(exact.min(3)) {
+                self.change(first.line, true);
+                let mut onward: Vec<_> = self.lines.moves[first.anchor].iter()
+                    .filter(|m| self.can_add(m.line)).map(|&m| (0., m)).collect();
+                self.score_moves(&mut onward);
+                let continuation = onward.iter().map(|v| v.0).fold(0., f64::max);
+                self.change(first.line, false);
+                if gain + continuation > best.0 {
+                    best = (gain + continuation, first);
+                }
+            }
+            self.exact_after_bridge = true;
+            return Some(best.1);
+        }
         if candidates[0].0 > MIN_GAIN {
             return Some(candidates[0].1);
         }

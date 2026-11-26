@@ -387,3 +387,35 @@ STRINGY_RELEASE_CHECK=1 python manage.py test
 Die Django-Tests brauchen wie der laufende Dienst einen gesetzten
 `DJANGO_SECRET_KEY`. Der Freigabetest erzeugt sein Testbild selbst und führt
 den gebauten Rust-Optimierer aus.
+
+### Vergleich auf einem festen Nagelplan
+
+Bei einer neuen Version eines gespeicherten Handfädelplans prüft der Worker
+Wickelseiten, Engstellen und zusammenhängende Fäden vor hellem Hintergrund.
+Er kann zwei Verbindungen tauschen oder einen geschlossenen Teil des Pfads
+umkehren. Die registrierte Katzenvorlage besitzt feste Bildausschnitte für
+beide Augen, Schnauze und Fell. Die Auswahl prüft sie bei 0,16, 0,20 und
+0,24 mm Fadenstärke. Das Freigangmodell verwendet 0,5 mm radialen
+Platzierungsfehler. Die verbleibenden unsicheren Züge stehen mit Schrittnummer
+und benachbartem Nagel im gespeicherten Pfad.
+
+Neue Motive können individuelle Tagesgrenzen tragen. Für deren Aufteilung
+schätzt Stringy den Aufwand aus Zuglänge, Wickelrichtungswechsel und erneuten
+Besuchen kurz zuvor benutzter Nägel. Gespeicherte Motive ohne Tagesgrenzen
+verwenden weiterhin die gleichmäßige Teilung ihrer Zugfolge.
+
+Diese Befehle erzeugen Vergleichsbilder und Messwerte lokal, mit demselben
+Rust-Programm wie der Worker. Für eigene Fotos sind die registrierte
+Graustufenvorlage und der zugehörige Pfad erforderlich.
+
+```bash
+python manage.py winding_trials --verify --output regression
+python manage.py winding_trials --route route.json --target target.png --seconds 30 --output suche
+python manage.py winding_budgets --route route.json --target target.png --output zugzahlen
+```
+
+Im Vergleich mit Zeitlimit zählt pro Suchmethode der beste innerhalb des
+Budgets vollständig bewertete Lauf. Auf einem langsameren Rechner ein höheres
+Budget wählen. Die drei öffentlichen Testmotive prüfen Porträtkontrast,
+Himmelsflächen und feine Konturen. GitHub Actions speichert deren
+Vergleichsbilder und Messwerte als Artefakt.

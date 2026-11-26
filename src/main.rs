@@ -107,6 +107,9 @@ struct Args {
     /// Deduction in squared-error gain per earlier use of the same chord.
     #[arg(long, default_value_t = Settings::default().repeat_penalty)]
     repeat_penalty: f64,
+    /// Evaluate alternative two-chord continuations at ambiguous decisions.
+    #[arg(long)]
+    lookahead: bool,
     /// Memory budget for cached raster samples. Use 0 for on-demand rasterization.
     #[arg(long, default_value_t = Settings::default().cache_mib)]
     cache_mib: usize,
@@ -179,6 +182,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         raster_size: args.raster_size,
         start_anchor: args.start_anchor,
         repeat_penalty: args.repeat_penalty,
+        lookahead: args.lookahead,
         cache_mib: args.cache_mib,
     };
     let mut reader =

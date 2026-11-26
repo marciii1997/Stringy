@@ -166,6 +166,11 @@ class Calendar(models.Model):
 
     def bounds(self, day):
         # Adjacent slices share the anchor at the boundary.
+        ends = self.artwork.route.get("day_ends", [])
+        if (isinstance(ends, list) and len(ends)==24 and ends[-1]==self.artwork.count
+                and all(type(i) is int for i in ends)
+                and all(a < b for a,b in zip([0]+ends, ends))):
+            return (ends[day-2] if day>1 else 0), ends[day-1]
         each, extra = divmod(self.artwork.count, 24)
         start = (day - 1) * each + min(day - 1, extra)
         return start, start + each + (day <= extra)

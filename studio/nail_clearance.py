@@ -119,6 +119,7 @@ def plan_winding_sides(route):
     displacement = 2 * error + 2 * radius * np.sin(angle_bound / 2)
     angles = np.zeros((len(a), 2, 2))
     margins = np.empty_like(angles)
+    nearest = np.empty_like(angles, dtype=int)
     for i, left in enumerate(sides):
         for j, right in enumerate(sides):
             k = radius * (left - right) / length
@@ -132,6 +133,7 @@ def plan_winding_sides(route):
                 rows = np.arange(len(gaps))
                 gaps[rows, a[sl]] = gaps[rows, b[sl]] = np.inf
                 margins[sl, i, j] = gaps.min(axis=1) - radius
+                nearest[sl, i, j] = gaps.argmin(axis=1)
     costs = np.maximum(0, displacement[:, None, None] - margins)
     # Lexicographic objective: uncertainties, total deficit, then wrapped angle.
     parent = np.empty((len(a), 2, 2), dtype=np.int8)
@@ -160,6 +162,10 @@ def plan_winding_sides(route):
     route["winding_sides"] = ["cw" if side == 0 else "ccw" for side in schedule]
     route["winding_clearance"] = {
         "radial_error_mm": error, "test_thread_mm": 2 * radius - route["settings"]["shaft_mm"],
+        "uncertain_edges": [
+            {"step": int(n)+1, "obstacle": int(nearest[n,schedule[n],schedule[n+1]]),
+             "margin_mm": float(chosen[n])} for n in np.flatnonzero(chosen < displacement)
+        ],
         "uncertified_steps": count, "min_nominal_margin_mm": float(chosen.min()),
         "wrapped_length_m_at_test_diameter": float(total_arc * radius / 1000),
     }

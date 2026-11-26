@@ -54,3 +54,25 @@ class HandcraftGeometryTests(SimpleTestCase):
         self.assertTrue(np.all(upper[:60] == 255))
         self.assertLess(np.argmin(upper[:,200]), np.argmin(lower[:,200]))
         self.assertGreater(assess(png(upper), upper)["score"], assess(png(upper), lower)["score"])
+
+    def test_effort_slices_and_legacy_days(self):
+        from types import SimpleNamespace
+        from .winding_study import day_ends
+        from .models import Calendar
+        import numpy as np
+        costs = np.repeat([1., 3.], 120)
+        ends = day_ends(costs)
+        gift = SimpleNamespace(artwork=SimpleNamespace(count=240, route={"day_ends":ends}))
+        bounds = [Calendar.bounds(gift, i) for i in range(1,25)]
+        self.assertEqual(bounds[0][0],0)
+        self.assertEqual(bounds[-1][1],240)
+        self.assertTrue(all(b==c for (_,b),(c,_) in zip(bounds,bounds[1:])))
+        self.assertLess(max(sum(costs[a:b]) for a,b in bounds),30)
+        gift.artwork.route = {}
+        self.assertEqual(Calendar.bounds(gift,1),(0,10))
+
+    def test_facial_guard_checks_each_material_separately(self):
+        from .winding_study import protected
+        base = {"score":.5,"white_ink":.03,"left_eye":.8}
+        profiles = [base]*3
+        self.assertFalse(protected([base,base,{**base,"score":.6,"left_eye":.79}],profiles,[("left_eye",())]))

@@ -45,12 +45,15 @@ def residual_layout(route, target, view):
 
 def fingerprint(route):
     data = [route["settings"], route["path"], route.get("winding_sides")]
+    if "day_ends" in route:
+        data.append(route["day_ends"])
     return hashlib.sha256(
         json.dumps(data, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
 
 
 def automatic(art, source, folder, renew, save):
+    from studio.winding_study import day_ends, effort, polish, registered_regions
     from studio.management.commands.process_art import (
         optimizer_command,
         refine_handcraft,
@@ -63,9 +66,18 @@ def automatic(art, source, folder, renew, save):
     target = bytes(art.target) if checkpoint else None
     trials = checkpoint.get("trials", [])
     finalists = checkpoint.get("layouts", [])
-    stages = ["standard", "seed41", "seed73", "finalist", "residual", "refine"]
+    stages = [
+        "standard",
+        "seed41",
+        "seed73",
+        "finalist",
+        "residual",
+        "refine",
+        "lookahead",
+        "polish",
+    ]
     if art.preparation.get("refine_saved_winding") and art.previous_id:
-        stages = ["archive", "refine"]
+        stages = ["archive", "polish"]
         target = bytes(art.previous.target)
     for index in range(len(trials), len(stages)):
         stage = stages[index]
@@ -78,6 +90,24 @@ def automatic(art, source, folder, renew, save):
                 candidate = art.previous.route.copy()
                 candidate.pop("calendar_import", None)
                 candidate.pop("layout_search", None)
+            elif stage == "polish":
+
+                def active():
+                    return time.monotonic() < deadline and renew()
+
+                candidate = polish(
+                    best,
+                    target,
+                    registered_regions(best, target),
+                    rounds=256 if art.preparation.get("refine_saved_winding") else 24,
+                    alive=active,
+                )
+                trials.append({"stage": stage, **candidate["polish"]})
+                best = candidate
+                best["layout_search"] = {"trials": trials}
+                if not save(route=best, target=target):
+                    return
+                continue
             elif stage == "refine":
                 candidate = json.loads(json.dumps(best))
                 winner = {
@@ -91,7 +121,9 @@ def automatic(art, source, folder, renew, save):
                     return
                 candidate = winner["route"]
             else:
-                if stage == "residual":
+                if stage == "lookahead":
+                    positions = best["settings"]["nail_positions"]
+                elif stage == "residual":
                     positions = residual_layout(best, target, simulation(best))
                 elif stage == "finalist":
                     positions = max(finalists, key=lambda entry: entry[0])[1]
@@ -102,6 +134,8 @@ def automatic(art, source, folder, renew, save):
                 command = optimizer_command(
                     art, source, folder, 320 if stage.startswith("seed") else 512
                 )
+                if stage == "lookahead":
+                    command.append("--lookahead")
                 if not run_optimizer(command, deadline, renew):
                     return
                 candidate = json.loads((folder / "path.json").read_bytes())
@@ -128,7 +162,7 @@ def automatic(art, source, folder, renew, save):
             trial = dict(stage=stage, **metrics)
             if best is None or (
                 metrics["score"] > best["physical_quality"]["score"]
-                and metrics["white_ink"] <= best["physical_quality"]["white_ink"] + .00025
+                and metrics["white_ink"] <= best["physical_quality"]["white_ink"] + 0.00025
                 and candidate["winding_clearance"]["uncertified_steps"]
                 <= best["winding_clearance"]["uncertified_steps"]
             ):
@@ -158,6 +192,7 @@ def automatic(art, source, folder, renew, save):
         if not save(route=best, target=target):
             return
     best["layout_search"].pop("layouts", None)
+    best["day_ends"] = day_ends(effort(best))
     best["version_hash"] = fingerprint(best)
     best["preparation"] = art.preparation
     save(

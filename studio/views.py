@@ -289,7 +289,7 @@ def new_version(request, pk):
             and profile.get("max_nail_load") == handcraft.MAX_NAIL_LOAD
             and profile.get("min_segment_mm", 0) >= handcraft.MIN_SEGMENT_MM
             and art.route.get("winding_sides")
-            and art.count == handcraft.SEGMENTS and art.winding_anchor_count <= handcraft.MAX_NAILS):
+            and 24 <= art.count <= handcraft.SEGMENTS and art.winding_anchor_count <= handcraft.MAX_NAILS):
         from studio.nail_clearance import placement_report
         if placement_report(art.route)["min_pitch_mm"] >= 16:
             preparation.update(handcraft=True, automatic_layout=True, refine_saved_winding=True)

@@ -17,6 +17,7 @@ class OpticalRefinement:
         pins = np.array(settings["nail_positions"])
         mm = pins * np.array(dims) / 2
         self.legal = np.zeros((len(mm), len(mm)), bool)
+        self.center_gap = np.zeros_like(self.legal, dtype=float)
         clearance = settings["shaft_mm"] + settings["thread_mm"] + 0.5
         for i in range(len(mm) - 1):
             vectors = mm[i + 1:] - mm[i]
@@ -27,8 +28,10 @@ class OpticalRefinement:
             distance[:, i] = np.inf
             rows = np.arange(len(vectors))
             distance[rows, rows + i + 1] = np.inf
+            self.center_gap[i, i+1:] = np.sqrt(distance.min(axis=1))
             self.legal[i, i + 1:] = (distance.min(axis=1) > clearance**2) & (lengths >= settings["min_segment_mm"]**2)
         self.legal |= self.legal.T.copy()
+        self.center_gap += self.center_gap.T.copy()
         self.a, self.b = np.where(np.triu(self.legal, 1))
         xy = (pins + 1) / 2 * (np.array(image.size) - 1)
         delta = xy[self.b] - xy[self.a]
@@ -39,7 +42,7 @@ class OpticalRefinement:
         self.limit = settings["max_chord_uses"]
         self.rng = np.random.default_rng(20261125)
 
-    def propose(self, winding, rendered, exchanges, three_cut=False, physical=False, local_weight=0.):
+    def chord_gains(self, rendered, physical, local_weight, regions=()):
         height, width = self.target.shape
         view = cv2.resize(rendered, (width, height), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
         smooth = lambda image: cv2.GaussianBlur(image, (0, 0), 1.5)
@@ -67,12 +70,19 @@ class OpticalRefinement:
                 for box in windows:
                     area = len(windows) * reference[box].size
                     gradient[box] += local_weight*reference.size/area*derivative(reference[box], simulated[box])
+            for _, (x,y,u,v) in regions:
+                box = np.s_[int(y*height):int(v*height), int(x*width):int(u*width)]
+                gradient[box] += reference.size/(len(regions)*reference[box].size)*derivative(reference[box], simulated[box])
             white = reference >= .94
             gradient[white] += 1.25/max(.01, white.mean())
         sensitivity = (smooth(gradient) * view).ravel()
         gain = np.full(self.legal.shape, -np.inf)
         gain[self.a, self.b] = gain[self.b, self.a] = -sensitivity[self.indices].mean(axis=1) * self.length
 
+        return gain
+
+    def propose(self, winding, rendered, exchanges, three_cut=False, physical=False, local_weight=0., regions=()):
+        gain = self.chord_gains(rendered, physical, local_weight, regions)
         path = np.array(winding)
         counts = np.zeros_like(gain, dtype=int)
         np.add.at(counts, (path[:-1], path[1:]), 1)

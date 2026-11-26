@@ -10,13 +10,7 @@ from PIL import Image, ImageDraw
 
 from studio.nail_clearance import placement_report, plan_winding_sides
 from studio.physical import assess, simulation
-
-CAT = (
-    ("left_eye", (0.18, 0.35, 0.48, 0.60)),
-    ("right_eye", (0.48, 0.35, 0.82, 0.60)),
-    ("muzzle", (0.30, 0.55, 0.71, 0.78)),
-    ("fur", (0.19, 0.16, 0.77, 0.34)),
-)
+from studio.winding_study import CAT_REGIONS as CAT
 
 
 class Command(BaseCommand):
