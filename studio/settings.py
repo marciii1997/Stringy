@@ -30,6 +30,7 @@ WSGI_APPLICATION = "studio.wsgi.application"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "studio" / "admin_skin"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

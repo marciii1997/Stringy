@@ -9,8 +9,9 @@
     {% block head %}{% endblock %}
   </head>
   <body>
-    <header>
-      <a class="brand" href="{% url 'home' %}">Stringy<span>.</span>
+    <a class="skip" href="#inhalt">Zum Inhalt</a>
+    <header class="masthead">
+      <a class="brand" href="{% url 'home' %}"><i class="brand-spool" aria-hidden="true"></i>Stringy<span>.</span>
       </a>
       <nav>
         {% if user.is_authenticated %}
@@ -24,7 +25,7 @@
         {% endif %}
       </nav>
     </header>
-    <main>
+    <main id="inhalt">
       {% block content %}{% endblock %}
     </main>
   </body>

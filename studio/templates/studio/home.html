@@ -1,6 +1,7 @@
 {% extends "studio/base.html" %}
+{% load static %}
 {% block content %}
-  <h1>Meine Adventskalender</h1>
+  <div class="calendar-head home-head"><h1>Meine Adventskalender</h1><img class="calendar-art" src="{% static 'studio/garnhoernchen.webp' %}" alt=""></div>
   {% if user.is_staff %}
     <nav class="actions">
       {% if perms.studio.view_artwork %}

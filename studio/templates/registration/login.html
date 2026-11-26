@@ -1,10 +1,11 @@
 {% extends "studio/base.html" %}
+{% load static %}
 {% block title %}Anmelden · Stringy{% endblock %}
 {% block content %}
   <section class="login">
-    <div class="spool" aria-hidden="true"></div>
+    <img class="login-art" src="{% static 'studio/garnhoernchen.webp' %}" alt="">
     <div>
-      <h1>Willkommen im Atelier.</h1>
+      <h1>Im Atelier anmelden</h1>
       <p>Melde dich mit deinem persönlichen Zugang an.</p>
       <form method="post" class="loginform">
         {% csrf_token %}{{ form.as_p }}<input type="hidden" name="next" value="{{ next }}">

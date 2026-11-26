@@ -1,7 +1,7 @@
 {% extends "studio/base.html" %}
 {% block title %}Türchen {{ day }} · Stringy{% endblock %}
 {% block content %}
-  <a href="{% url 'calendar' gift.pk %}">← {{ gift.title }}</a>
+  <a class="back" href="{% url 'calendar' gift.pk %}">← {{ gift.title }}</a>
   <h1>Türchen {{ day }}</h1>
   {% if active %}
     <section id="faedeln" class="thread-guide">

@@ -1,0 +1,12 @@
+@font-face { font-family:"Young Serif"; src:url("fonts/YoungSerif-Regular.ttf") format("truetype"); font-display:swap; }
+html[data-theme="light"], :root {
+  --primary:#385848; --secondary:#2c493c; --accent:#fff4d8;
+  --header-color:#fff9ec; --header-branding-color:#fff4d8; --header-bg:#294838;
+  --breadcrumbs-bg:#e7e5d6; --breadcrumbs-fg:#354f40; --breadcrumbs-link-fg:#253e30;
+  --default-button-bg:#345441; --default-button-hover-bg:#253e30;
+  --button-bg:#385848; --button-hover-bg:#294838;
+}
+html[data-theme="light"] { --body-bg:#fbf7ec; --body-fg:#233e33; --link-fg:#793726; --darkened-bg:#f3efdf; }
+#site-name,.dashboard #content h1,#content>h1 { font-family:"Young Serif",Georgia,serif; font-weight:400; }
+#site-name { letter-spacing:-.03em; }
+.module caption,.module h2 { border-radius:6px 6px 0 0; }
