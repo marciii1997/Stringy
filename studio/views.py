@@ -4,6 +4,7 @@ from pathlib import Path
 from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import transaction
+from django.db.models import Q
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
@@ -20,20 +21,23 @@ from .laser import LaserForm, laser_svg
 from .models import Artwork, Calendar, advent_year
 
 
+def accessible_calendars(user):
+    return Calendar.objects.filter(Q(tester=user) | Q(tester__isnull=True, recipient=user))
+
+
 @never_cache
 @login_required
 def home(request):
-    calendars = Calendar.objects.filter(recipient=request.user).order_by("-year", "title")
+    calendars = accessible_calendars(request.user).order_by("-year", "title")
     return render(request, "studio/home.html", {"calendars": calendars})
 
 
 def owned(request, pk):
     return get_object_or_404(
-        Calendar.objects.select_related("artwork").defer(
+        accessible_calendars(request.user).select_related("artwork").defer(
             "artwork__source", "artwork__preview", "artwork__target", "artwork__route"
         ),
         pk=pk,
-        recipient=request.user,
     )
 
 
@@ -55,6 +59,8 @@ def calendar(request, pk):
 
 def opened(request, pk, day):
     gift = owned(request, pk)
+    if request.method == "POST" and (request.POST.get("preview") == "1") != bool(gift.tester_id):
+        raise Http404
     if not 1 <= day <= gift.unlocked():
         raise Http404
     return gift
@@ -116,7 +122,7 @@ def thread_step(request, pk, day):
     target = expected + delta
     if not (0 <= expected <= end - start and 0 <= target <= end - start):
         return HttpResponseBadRequest("Schritt außerhalb dieses Türchens.")
-    Calendar.objects.filter(pk=pk, recipient=request.user, finished=day - 1, step=expected).update(
+    accessible_calendars(request.user).filter(pk=pk, tester_id=gift.tester_id, finished=day - 1, step=expected).update(
         step=target
     )
     return redirect(reverse("door", args=[pk, day]) + "#faedeln")
@@ -126,10 +132,23 @@ def thread_step(request, pk, day):
 @login_required
 def complete(request, pk, day):
     gift = opened(request, pk, day)
-    Calendar.objects.filter(pk=gift.pk, recipient=request.user, finished=day - 1).update(
+    accessible_calendars(request.user).filter(pk=gift.pk, tester_id=gift.tester_id, finished=day - 1).update(
         finished=day, step=0
     )
     return redirect("calendar", pk=pk)
+
+
+@require_POST
+@staff_member_required
+@permission_required("studio.add_calendar", raise_exception=True)
+def publish_calendar(request, pk):
+    with transaction.atomic():
+        gift = get_object_or_404(Calendar.objects.select_for_update(), pk=pk, tester=request.user)
+        gift.tester = None
+        gift.finished = gift.step = 0
+        gift.save(update_fields=["tester", "finished", "step"])
+    messages.success(request, f"„{gift.title}“ ist jetzt im Konto von {gift.recipient}. Die Türchen öffnen sich im Advent {gift.year}.")
+    return redirect("atelier")
 
 
 def private_artwork(view):
@@ -175,7 +194,13 @@ def give(request, pk):
     form = GiftForm(request.POST if request.method == "POST" else None)
     year = advent_year()
     if form.is_valid():
-        gift, _ = Calendar.objects.get_or_create(artwork=art, year=year, **form.cleaned_data)
+        values = dict(form.cleaned_data)
+        tester = request.user if values.pop("instant_open") else None
+        with transaction.atomic():
+            fields = dict(artwork=art, year=year, tester=tester, **values)
+            gift = Calendar.objects.filter(**fields).first() or Calendar.objects.create(**fields)
+        if tester:
+            return redirect("calendar", pk=gift.pk)
         messages.success(request, f"„{gift.title}“ ist im Konto von {gift.recipient} für den Advent {year} bereit.")
         return redirect("atelier")
     return render(request, "studio/give.html", {"art": art, "form": form, "year": year})

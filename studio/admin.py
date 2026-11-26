@@ -4,7 +4,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .forms import CalculationForm, validate_photo
+from .forms import CalculationForm, GiftForm, validate_photo
 from .models import Artwork, Calendar
 
 admin.site.site_header = "Stringy · Atelier"
@@ -107,8 +107,22 @@ class ArtworkAdmin(admin.ModelAdmin):
             super().save_model(request, obj, form, change)
 
 
+class CalendarAdminForm(forms.ModelForm):
+    instant_open = GiftForm.base_fields["instant_open"]
+
+
 @admin.register(Calendar)
 class CalendarAdmin(admin.ModelAdmin):
+    form = CalendarAdminForm
+
+    def get_fields(self, request, obj=None):
+        return self.fields if obj else (*self.fields, "instant_open")
+
+    def save_model(self, request, obj, form, change):
+        if not change and form.cleaned_data.get("instant_open"):
+            obj.tester = request.user
+        super().save_model(request, obj, form, change)
+
     list_display = ("title", "recipient", "year", "artwork", "finished")
     list_filter = ("year",)
     fields = ("title", "recipient", "year", "artwork")

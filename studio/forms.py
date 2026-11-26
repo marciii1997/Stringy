@@ -142,6 +142,10 @@ def validate_photo(photo):
 
 
 class GiftForm(forms.Form):
+    instant_open = forms.BooleanField(
+        label="Kann sofort geöffnet werden", required=False,
+        help_text="Du kannst alle 24 Türchen in deinem Konto ausprobieren. Die beschenkte Person sieht den Kalender erst, wenn du ihn freigibst.",
+    )
     recipient = forms.ModelChoiceField(
         label="Für wen ist der Kalender?",
         queryset=get_user_model().objects.filter(is_active=True).order_by("username"),

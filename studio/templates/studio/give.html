@@ -8,7 +8,8 @@
       <p>{{ form.recipient.as_field_group }}</p>
       <details {% if form.title.errors %}open{% endif %}><summary>Kalendernamen ändern</summary><p>{{ form.title.as_field_group }}</p></details>
       {% if perms.auth.add_user %}<p><a href="{% url 'admin:auth_user_add' %}" target="_blank" rel="noopener">Konto für eine neue Person anlegen</a> · Danach diese Seite neu laden.</p>{% endif %}
-      <button>Kalender im Konto bereitstellen</button>
+      <p class="instant-choice">{{ form.instant_open.as_field_group }}</p>
+      <button>Kalender erstellen</button>
     </form>
   </section>
 {% endblock %}

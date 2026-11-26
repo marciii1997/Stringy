@@ -188,3 +188,5 @@ summary { cursor:pointer; margin:12px 0; font-weight:600; }
 .wind-help { padding-left:20px; }
 .wind-help li { margin:4px 0; }
 @media(max-width:540px) { .calendar-intro>.primary { grid-column:1/-1; } }
+
+.simple-form .instant-choice input { width:auto; }

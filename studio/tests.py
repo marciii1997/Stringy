@@ -276,3 +276,45 @@ class GuidedFlowTests(TestCase):
         response = self.client.post(reverse("upload"), {})
         self.assertIn("photo", response.context["form"].errors)
         self.assertFalse(Artwork.objects.exists())
+
+
+class CalendarTrialTests(TestCase):
+    @patch("django.utils.timezone.localdate", return_value=date(2026, 11, 26))
+    def test_private_rehearsal_and_release(self, _):
+        maker = get_user_model().objects.create_superuser("maker")
+        recipient = get_user_model().objects.create_user("winter")
+        art = Artwork.objects.create(title="Geheim", source=b"", state="ready", count=48,
+                                     route={"path": [0, 1, 2] * 16 + [0]})
+        self.client.force_login(maker)
+        self.client.post(reverse("give", args=[art.pk]), {
+            "recipient": recipient.pk, "title": "Wintertage", "instant_open": "on",
+        })
+        gift = Calendar.objects.get()
+        url = reverse("calendar", args=[gift.pk])
+        release = reverse("publish_calendar", args=[gift.pk])
+        self.assertContains(self.client.get(url), "Dein Probelauf")
+        self.assertEqual(self.client.get(release).status_code, 405)
+        self.client.force_login(recipient)
+        self.assertNotContains(self.client.get("/"), gift.title)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.get(reverse("door", args=[gift.pk, 24])).status_code, 404)
+        self.client.force_login(maker)
+        for day in range(1, 25):
+            self.assertEqual(self.client.get(reverse("door", args=[gift.pk, day])).status_code, 200)
+            self.client.post(reverse("thread_step", args=[gift.pk, day]),
+                             {"preview": "1", "action": "next", "step": 0})
+            gift.refresh_from_db()
+            self.assertEqual(gift.step, 1)
+            self.client.post(reverse("complete", args=[gift.pk, day]), {"preview": "1"})
+        gift.refresh_from_db()
+        self.assertEqual(gift.finished, 24)
+        self.assertRedirects(self.client.post(release), reverse("atelier"))
+        gift.refresh_from_db()
+        self.assertEqual((gift.finished, gift.step, gift.tester_id), (0, 0, None))
+        self.client.force_login(recipient)
+        self.assertContains(self.client.get("/"), gift.title)
+        self.assertEqual(self.client.get(reverse("door", args=[gift.pk, 1])).status_code, 404)
+        with patch("django.utils.timezone.localdate", return_value=date(2026, 12, 1)):
+            self.assertEqual(self.client.get(reverse("door", args=[gift.pk, 1])).status_code, 200)
+            self.assertEqual(self.client.post(reverse("complete", args=[gift.pk, 1]), {"preview": "1"}).status_code, 404)
+            self.assertEqual(self.client.get(reverse("door", args=[gift.pk, 2])).status_code, 404)

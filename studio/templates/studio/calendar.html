@@ -3,6 +3,13 @@
 {% block title %}{{ gift.title }} · Stringy{% endblock %}
 {% block content %}
   <a class="back" href="{% url 'home' %}">← Meine Kalender</a>
+  {% if gift.tester_id %}
+    <section class="notice" aria-label="Testmodus">
+      <h2>Dein Probelauf</h2>
+      <p>Alle Türchen sind für dich offen. Beim Verschenken startet {{ gift.recipient }} bei null und die Türchen öffnen sich nach Datum.</p>
+      {% if perms.studio.add_calendar and user.is_staff %}<form method="post" action="{% url 'publish_calendar' gift.pk %}">{% csrf_token %}<button>Test beenden und Kalender verschenken</button></form>{% endif %}
+    </section>
+  {% endif %}
   <section class="calendar-head">
     <div class="calendar-intro">
       <p class="kicker">Advent {{ gift.year|stringformat:"d" }}</p>

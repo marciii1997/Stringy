@@ -8,7 +8,7 @@
   <div class="cards">
     {% for gift in calendars %}
       <a class="card" href="{% url 'calendar' gift.pk %}">
-        <span>Advent {{ gift.year|stringformat:"d" }}</span>
+        <span>{% if gift.tester_id %}Probelauf · {% endif %}Advent {{ gift.year|stringformat:"d" }}</span>
         <h2>{{ gift.title }}</h2>
         <p>{{ gift.finished }} von 24 Türchen fertig</p>
         <progress max="24" value="{{ gift.finished }}">

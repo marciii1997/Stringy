@@ -10,6 +10,7 @@ urlpatterns = [
     path("abmelden/", LogoutView.as_view(), name="logout"),
     path("verwaltung/", admin.site.urls),
     path("kalender/<int:pk>/", views.calendar, name="calendar"),
+    path("kalender/<int:pk>/verschenken/", views.publish_calendar, name="publish_calendar"),
     path("kalender/<int:pk>/<int:day>/", views.door, name="door"),
     path("kalender/<int:pk>/<int:day>/fertig/", views.complete, name="complete"),
     path("atelier/", views.atelier, name="atelier"),

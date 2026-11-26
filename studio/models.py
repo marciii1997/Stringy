@@ -144,6 +144,10 @@ class Calendar(models.Model):
     year = models.PositiveIntegerField(
         "Adventsjahr", default=advent_year, validators=[MinValueValidator(2000), MaxValueValidator(9999)]
     )
+    tester = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, editable=False, on_delete=models.PROTECT,
+        related_name="test_calendars", verbose_name="Testkonto",
+    )
     step = models.PositiveIntegerField("Verbindungen im aktuellen Türchen", default=0, editable=False)
     finished = models.PositiveSmallIntegerField("Fertige Türchen", default=0, editable=False)
 
@@ -155,6 +159,8 @@ class Calendar(models.Model):
         return self.title
 
     def unlocked(self, today=None):
+        if self.tester_id is not None:
+            return 24
         elapsed = ((today or timezone.localdate()) - date(self.year, 12, 1)).days
         return max(0, min(24, elapsed + 1))
 
