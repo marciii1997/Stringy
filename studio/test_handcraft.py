@@ -41,3 +41,16 @@ class HandcraftGeometryTests(SimpleTestCase):
         self.assertEqual(len(route["winding_sides"]), len(route["path"]))
         self.assertTrue(set(route["winding_sides"]) <= {"cw", "ccw"})
         self.assertEqual(route["winding_clearance"]["uncertified_steps"], 0)
+
+    def test_tangent_renderer_preserves_highlights_and_depends_on_winding_side(self):
+        import numpy as np
+        from .physical import simulation, png, assess
+        route = {"path": [0,1], "anchors":[{"x_mm":-15,"y_mm":0},{"x_mm":15,"y_mm":0}],
+                 "settings":{"shaft_mm":1.2,"thread_mm":.2,"rectangle_mm":[40,20],"opacity":.85},
+                 "winding_sides":["cw","cw"]}
+        upper = simulation(route, 401)
+        route["winding_sides"] = ["ccw","ccw"]
+        lower = simulation(route, 401)
+        self.assertTrue(np.all(upper[:60] == 255))
+        self.assertLess(np.argmin(upper[:,200]), np.argmin(lower[:,200]))
+        self.assertGreater(assess(png(upper), upper)["score"], assess(png(upper), lower)["score"])

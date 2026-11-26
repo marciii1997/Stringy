@@ -345,3 +345,45 @@ Mittelpunkte und prüft die Lochgröße gegen den kleinsten realen Nagelabstand.
 Die CLI akzeptiert mit `--nail-positions naegel.json` eine geordnete JSON-Liste
 wie `[[0,-1],[0.7,0.5],[-0.7,0.5],[0,0]]`. Der Mittelpunkt ist `[0,0]`, der
 Radius entspricht 1, y wächst nach unten. Die Liste legt die Ankerzahl fest.
+
+### Qualitätsvergleich für den Handfädelmodus
+
+Ein normaler Foto-Upload erzeugt einen planen Fadenverlauf mit bis zu 350 Nägeln.
+Der Worker beginnt mit dem bisherigen Layout und dessen Pfadverbesserung. Danach
+vergleicht er zwei grobe Nagellayouts, rechnet den stärkeren Kandidaten feiner
+und probiert bis zu acht neue Positionen an Stellen mit fehlender Deckung.
+Jeder Layoutwechsel erhält einen neu berechneten, zusammenhängenden Pfad.
+Nach jeder Stufe speichert der Worker den besten vollständigen Pfad. Nach einem
+Abbruch kann ein Worker den Auftrag nach Ablauf der sechsminütigen Reservierung
+an der nächsten Stufe fortsetzen.
+
+Die Vorschau berücksichtigt die Wickelseite bei jedem Besuch, 1,2-mm-Schäfte,
+den angegebenen Fadendurchmesser und 3-mm-Köpfe. Bei der Auswahl zählen
+Bildstruktur, helle Flächen und die Zahl der bei 0,5 mm Platzierungsfehler
+unsicheren Schritte. Zwei zusätzliche Simulationen bewerten die Empfindlichkeit
+gegenüber dünnerem und dickerem Faden. Beim Standardmaterial verwenden sie
+0,16 mm mit Deckkraft 0,75 und 0,24 mm mit Deckkraft 1. Die Annahmen beschreiben
+ein optisches Modell. Die tatsächliche Wickelhöhe hängt vom verwendeten Material ab.
+
+Unter **Motiv bearbeiten und Berechnung ansehen → Neue Version berechnen**
+entsteht ein eigenes Motiv. Bei einem passenden gespeicherten Handfädelplan
+beginnt die Suche mit dem vorhandenen Pfad und dessen registrierter Vorlage.
+Ein Kalender verweist dauerhaft auf die beim Verschenken ausgewählte Motiv-ID.
+
+Für einen reproduzierbaren Vergleich braucht man das zugeschnittene Zielbild und
+zwei JSON-Pfade mit demselben Nagelfeld. Der Befehl schreibt die Messwerte und
+einen visuellen Vergleich ins Ausgabeverzeichnis. Für die private Katzenreferenz
+ergänzt `--cat` feste Ausschnitte für Augen, Schnauze und Fell. Mit
+`--search-seconds 25` lässt sich die Zwei- und Drei-Schnitt-Suche am ersten Pfad
+mit demselben Zeitbudget vergleichen.
+
+```bash
+python manage.py benchmark_winding --target ziel.png --output vergleich vorher.json nachher.json
+cargo test --locked --release
+cargo build --locked --release
+STRINGY_RELEASE_CHECK=1 python manage.py test
+```
+
+Die Django-Tests brauchen wie der laufende Dienst einen gesetzten
+`DJANGO_SECRET_KEY`. Der Freigabetest erzeugt sein Testbild selbst und führt
+den gebauten Rust-Optimierer aus.

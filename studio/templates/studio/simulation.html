@@ -51,6 +51,11 @@
     {% csrf_token %}<button>Für 24 Tage zum Handfädeln berechnen</button>
   </form>
   {% endif %}
+  <form method="post" action="{% url 'new_version' art.pk %}">{% csrf_token %}<button>Neue Version berechnen</button></form>
+  {% if art.previous_id and art.previous.state == "ready" %}
+  <div class="spread"><figure><img width="220" src="{% url 'asset' art.previous_id 'preview' %}" alt="Vorheriges Fadenbild"><figcaption><a href="{% url 'simulation' art.previous_id %}">Vorherige Version #{{ art.previous_id }}</a></figcaption></figure>
+    <figure><img width="220" src="{% url 'asset' art.pk 'preview' %}" alt="Aktuelles Fadenbild"><figcaption>Diese Version #{{ art.pk }}</figcaption></figure>
+  </div>{% endif %}
   <p><a href="{% url 'motif' art.pk %}">Bildausschnitt und Motiv bearbeiten</a></p>
   {% endif %}
   {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}

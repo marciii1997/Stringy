@@ -1,5 +1,5 @@
 const player = document.querySelector(".player");
-const {path, anchors, rectangle, positions, firstExtra, start, width, initial, opacity} = JSON.parse(document.getElementById("playback").textContent);
+const {path, anchors, rectangle, positions, firstExtra, start, width, initial, opacity, sides, tangentRadius} = JSON.parse(document.getElementById("playback").textContent);
 const canvas = player.querySelector("canvas");
 const ctx = canvas.getContext("2d");
 const slider = player.querySelector("input[type=range]");
@@ -36,6 +36,21 @@ const points = Array.from({length: anchors}, (_, index) => {
 slider.max = path.length - 1 - start;
 slider.value = initial ?? slider.max;
 
+const segments = path.slice(1).map((pin, index) => {
+    const a = points[path[index]], b = points[pin];
+    if (!sides || !sides[index+1]) return [a, b];
+    const r = tangentRadius * 2 * radius;
+    const length = Math.hypot(b[0]-a[0], b[1]-a[1]);
+    if (length <= 2*r) return [a, b];
+    const dx = (b[0]-a[0])/length, dy = (b[1]-a[1])/length;
+    const startSide = sides[index] === "ccw" ? 1 : -1;
+    const endSide = sides[index+1] === "ccw" ? 1 : -1;
+    const k = r*(startSide-endSide)/length, q = Math.sqrt(1-k*k);
+    const nx = k*dx-q*dy, ny = k*dy+q*dx;
+    return [[a[0]+startSide*r*nx, a[1]+startSide*r*ny],
+            [b[0]+endSide*r*nx, b[1]+endSide*r*ny]];
+});
+
 function draw() {
     const step = Number(slider.value);
     ctx.globalAlpha = 1;
@@ -54,8 +69,8 @@ function draw() {
     ctx.strokeStyle = "#000";
     for (let i = 1; !plan && i <= start + step; i++) {
         ctx.beginPath();
-        ctx.moveTo(...points[path[i - 1]]);
-        ctx.lineTo(...points[path[i]]);
+        ctx.moveTo(...segments[i-1][0]);
+        ctx.lineTo(...segments[i-1][1]);
         ctx.stroke();
     }
     if (showNails.checked) {

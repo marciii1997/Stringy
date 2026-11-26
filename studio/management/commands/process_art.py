@@ -43,6 +43,10 @@ def process_one():
             folder = Path(temp)
             source = folder / "bild"
             source.write_bytes(art.source)
+            if art.rectangle and art.preparation.get("automatic_layout") and art.preparation.get("handcraft"):
+                from studio.layout_search import automatic
+                automatic(art, source, folder, renew, lambda **values: claim.update(**values))
+                return True
             if art.preparation.get("automatic_layout") and not art.nail_positions:
                 art.nail_positions = photo_layout(art.source, art.field_size)
                 art.anchors = len(art.nail_positions)
@@ -205,15 +209,22 @@ def process_one():
     return True
 
 
-def refine_handcraft(art, source, folder, winner, reference, priority, deadline, renew):
+def refine_handcraft(art, source, folder, winner, reference, priority, deadline, renew, physical=False):
     from studio.management.commands.optimize_350 import material_score, with_nail_heads
     from studio.optical import OpticalRefinement
 
     route = winner["route"]
     search = OpticalRefinement(route, reference, art.field_size)
-    rendered = with_nail_heads(winner["preview"], route, art.field_size)
-    best_score, _ = material_score(reference, rendered, priority, bool(art.rectangle))
-    directory = folder / "refinement"
+    if physical:
+        from studio.physical import simulation as physical_image, assess
+        from studio.nail_clearance import plan_winding_sides
+        rendered = physical_image(route)
+        baseline_metrics = assess(reference, rendered)
+        best_score = baseline_metrics["score"] + baseline_metrics["local_structure"]
+    else:
+        rendered = with_nail_heads(winner["preview"], route, art.field_size)
+        best_score, _ = material_score(reference, rendered, priority, bool(art.rectangle))
+    directory = folder / ("physical-refinement" if physical else "refinement")
     directory.mkdir()
     cmd = optimizer_command(art, source, directory, route["settings"]["raster_size"], route["settings"]["nail_positions"])
     if "--base-ring" in cmd:
@@ -223,10 +234,19 @@ def refine_handcraft(art, source, folder, winner, reference, priority, deadline,
     seed = directory / "winding.json"
     cmd.extend(["--initial-winding", str(seed), "--start-anchor", str(route["path"][0])])
     trials = []
-    for edits in (12, 20, 32, 8) * 3:
+    stale = 0
+    heartbeat = time.monotonic()
+    for index, edits in enumerate((12, 20, 32, 8) * (14 if physical else 3)):
+        if physical and stale >= 10:
+            break
+        stale += 1
+        if time.monotonic() - heartbeat > 45:
+            if not renew():
+                return False
+            heartbeat = time.monotonic()
         if time.monotonic() >= deadline:
             break
-        proposal = search.propose(winner["route"]["path"], rendered, edits)
+        proposal = search.propose(winner["route"]["path"], rendered, edits, three_cut=physical and stale >= 3 and index % 2 == 1, physical=physical, local_weight=2.5)
         if proposal == winner["route"]["path"]:
             continue
         seed.write_text(json.dumps(proposal))
@@ -237,10 +257,21 @@ def refine_handcraft(art, source, folder, winner, reference, priority, deadline,
             break
         candidate = json.loads((directory / "path.json").read_bytes())
         preview = (directory / "preview.png").read_bytes()
-        simulation = with_nail_heads(preview, candidate, art.field_size)
-        score, _ = material_score(reference, simulation, priority, bool(art.rectangle))
+        if physical:
+            plan_winding_sides(candidate)
+            simulation = physical_image(candidate)
+            metrics = assess(reference, simulation)
+            score = metrics["score"] + metrics["local_structure"]
+            if metrics["local_structure"] < baseline_metrics["local_structure"]:
+                continue
+            if candidate["winding_clearance"]["uncertified_steps"] > winner["route"]["winding_clearance"]["uncertified_steps"]:
+                continue
+        else:
+            simulation = with_nail_heads(preview, candidate, art.field_size)
+            score, _ = material_score(reference, simulation, priority, bool(art.rectangle))
         trials.append(score)
         if score > best_score:
+            stale = 0
             winner["route"] = {**winner["route"], **candidate}
             winner["route"]["view_quality"] = view_quality(reference, preview, priority, rectangular=bool(art.rectangle))
             winner["preview"] = preview

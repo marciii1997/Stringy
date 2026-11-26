@@ -1,0 +1,17 @@
+name: Stringy release checks
+on: [push, pull_request]
+jobs:
+  winding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: cargo test --locked --release
+      - run: cargo build --locked --release
+      - run: pip install -r requirements.txt
+      - run: python manage.py test
+        env:
+          DJANGO_SECRET_KEY: ci-ephemeral
+          STRINGY_RELEASE_CHECK: '1'

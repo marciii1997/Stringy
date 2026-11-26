@@ -39,7 +39,7 @@ class OpticalRefinement:
         self.limit = settings["max_chord_uses"]
         self.rng = np.random.default_rng(20261125)
 
-    def propose(self, winding, rendered, exchanges):
+    def propose(self, winding, rendered, exchanges, three_cut=False, physical=False, local_weight=0.):
         height, width = self.target.shape
         view = cv2.resize(rendered, (width, height), interpolation=cv2.INTER_AREA).astype(np.float32) / 255
         smooth = lambda image: cv2.GaussianBlur(image, (0, 0), 1.5)
@@ -49,6 +49,26 @@ class OpticalRefinement:
         local = residual - cv2.GaussianBlur(residual, (0, 0), 6)
         gradient = residual + 1.5 * local
         gradient[self.white] += 0.15
+        if physical:
+            # Derivative of normalized correlation on fine detail, plus whole-image
+            # tone and highlights. Scale each by its area so white sky stays clear.
+            def derivative(x, y):
+                xc, yc = x-x.mean(), y-y.mean()
+                sx, sy = max(.01, x.std()), max(.01, y.std())
+                return xc/(sx*sy) - np.mean(xc*yc)*yc/(sx*sy**3)
+            high_target = reference - cv2.GaussianBlur(reference, (0,0), 7)
+            high_sim = simulated - cv2.GaussianBlur(simulated, (0,0), 7)
+            detail = derivative(high_target, high_sim)
+            gradient = .5*derivative(reference, simulated) + .4*residual/max(.01, np.sqrt(np.mean(residual**2)))
+            gradient += .5*(detail-cv2.GaussianBlur(detail, (0,0), 7))
+            if local_weight:
+                from studio.physical import detail_windows
+                windows = list(detail_windows(reference))
+                for box in windows:
+                    area = len(windows) * reference[box].size
+                    gradient[box] += local_weight*reference.size/area*derivative(reference[box], simulated[box])
+            white = reference >= .94
+            gradient[white] += .6/max(.01, white.mean())
         sensitivity = (smooth(gradient) * view).ravel()
         gain = np.full(self.legal.shape, -np.inf)
         gain[self.a, self.b] = gain[self.b, self.a] = -sensitivity[self.indices].mean(axis=1) * self.length
@@ -58,6 +78,23 @@ class OpticalRefinement:
         np.add.at(counts, (path[:-1], path[1:]), 1)
         counts += counts.T.copy()
         for _ in range(exchanges):
+            if three_cut:
+                i, j, k = np.sort(self.rng.integers(0, len(path)-1, (3, 12000)), axis=0)
+                a,b,c,d,e,f = path[i],path[i+1],path[j],path[j+1],path[k],path[k+1]
+                distinct = np.all(np.diff(np.sort(np.stack((a,b,c,d,e,f)), axis=0), axis=0) != 0, axis=0)
+                valid = distinct & self.legal[a,d] & self.legal[e,b] & self.legal[c,f]
+                valid &= (counts[a,d]<self.limit) & (counts[e,b]<self.limit) & (counts[c,f]<self.limit)
+                candidates = np.flatnonzero(valid)
+                if candidates.size:
+                    changes = (gain[a,d]+gain[e,b]+gain[c,f])[candidates] - (gain[a,b]+gain[c,d]+gain[e,f])[candidates]
+                    n = candidates[np.argmax(changes)]
+                    if changes.max() > 0:
+                        for u,v,delta in ((a,b,-1),(c,d,-1),(e,f,-1),(a,d,1),(e,b,1),(c,f,1)):
+                            counts[u[n],v[n]] += delta
+                            counts[v[n],u[n]] += delta
+                        left, middle, right = i[n]+1,j[n]+1,k[n]+1
+                        path[left:right] = np.concatenate((path[middle:right],path[left:middle]))
+                continue
             cuts = self.rng.integers(0, len(path) - 1, (2, 12000))
             left, right = np.sort(cuts, axis=0)
             a, b, c, d = path[left], path[left + 1], path[right], path[right + 1]

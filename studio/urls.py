@@ -19,6 +19,7 @@ urlpatterns = [
     path("atelier/<int:pk>/", views.simulation, name="simulation"),
     path("kalender/<int:pk>/<int:day>/schritt/", views.thread_step, name="thread_step"),
     path("atelier/<int:pk>/neu-berechnen/", views.recalculate, name="recalculate"),
+    path("atelier/<int:pk>/version/", views.new_version, name="new_version"),
     path("atelier/<int:pk>/handfaedeln/", views.handcraft_variant, name="handcraft"),
     path("atelier/<int:pk>/motiv/", motif_views.editor, name="motif"),
     path("atelier/vergleich/<uuid:group>/", motif_views.comparison, name="comparison"),

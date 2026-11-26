@@ -10,6 +10,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
 from django.http import Http404, HttpResponse, HttpResponseBadRequest, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
@@ -71,42 +72,35 @@ def opened(request, pk, day):
 def door(request, pk, day):
     gift = opened(request, pk, day)
     start, end = gift.bounds(day)
-    # Only the released prefix crosses the recipient's trust boundary.
-    path = gift.artwork.route["path"][: end + 1]
+    context = step_context(gift, day, start, end)
+    path = gift.artwork.route["path"][:end+1]
+    context["sequence"] = path[start:]
+    directions = gift.artwork.route.get("winding_sides", [])
+    if len(directions) > end:
+        context["day_directions"] = [(pin, direction_name(directions[i])) for i, pin in enumerate(path[start:], start)]
+    context["playback"] = {
+        "path": path, "start": start, "initial": gift.step if context["active"] else end-start,
+        **playback_layout(gift.artwork, path), "opacity": gift.artwork.opacity,
+        "width": gift.artwork.thread / max(gift.artwork.field_size),
+    }
+    return render(request, "studio/door.html", context)
+
+
+def direction_name(side):
+    return {"cw": "im Uhrzeigersinn", "ccw": "gegen den Uhrzeigersinn"}.get(side)
+
+
+def step_context(gift, day, start, end):
     active = day == gift.finished + 1
     cursor = start + gift.step if active else end
-    directions = gift.artwork.route.get("winding_sides", [])
-    def winding_direction(index):
-        if 0 <= index < len(directions):
-            return {"cw": "im Uhrzeigersinn", "ccw": "gegen den Uhrzeigersinn"}.get(directions[index])
-        return None
-
-    return render(
-        request,
-        "studio/door.html",
-        {
-            "gift": gift,
-            "day": day,
-            "sequence": path[start:],
-            "day_directions": [
-                (pin, winding_direction(index)) for index, pin in enumerate(path[start:], start)
-            ] if len(directions) >= end + 1 else None,
-            "active": active,
-            "current": path[cursor],
-            "current_direction": winding_direction(cursor),
-            "following_direction": winding_direction(cursor + 1) if cursor < end else None,
-            "following": path[cursor + 1] if cursor < end else None,
-            "count": end - start,
-            "playback": {
-                "path": path,
-                "start": start,
-                "initial": cursor - start,
-                **playback_layout(gift.artwork, path),
-                "opacity": gift.artwork.opacity,
-                "width": gift.artwork.thread / max(gift.artwork.field_size),
-            },
-        },
-    )
+    path = gift.artwork.route["path"]
+    sides = gift.artwork.route.get("winding_sides", [])
+    return {
+        "gift": gift, "day": day, "active": active, "count": end-start,
+        "current": path[cursor], "following": path[cursor+1] if cursor < end else None,
+        "current_direction": direction_name(sides[cursor]) if cursor < len(sides) else None,
+        "following_direction": direction_name(sides[cursor+1]) if cursor < end and cursor+1 < len(sides) else None,
+    }
 
 
 @require_POST
@@ -125,6 +119,13 @@ def thread_step(request, pk, day):
     accessible_calendars(request.user).filter(pk=pk, tester_id=gift.tester_id, finished=day - 1, step=expected).update(
         step=target
     )
+    if request.headers.get("Accept") == "application/json":
+        current = opened(request, pk, day)
+        if current.finished != day-1:
+            return JsonResponse({"reload": True})
+        context = step_context(current, day, start, end)
+        return JsonResponse({"html": render_to_string("studio/step.html", context, request),
+                             "step": current.step})
     return redirect(reverse("door", args=[pk, day]) + "#faedeln")
 
 
@@ -211,6 +212,10 @@ def playback_layout(art, released=None):
     layout = {"anchors": len(positions) or art.anchors}
     if art.rectangle:
         layout["rectangle"] = art.rectangle
+        sides = art.route.get("winding_sides")
+        if sides:
+            layout["sides"] = sides if released is None else sides[:len(released)]
+            layout["tangentRadius"] = (art.shaft_mm + art.thread)/(2*max(art.field_size))
     if positions:
         ids = range(len(positions)) if released is None else sorted(set(released))
         layout["positions"] = {i: positions[i] for i in ids}
@@ -269,6 +274,27 @@ def handcraft_variant(request, pk):
         preparation={"handcraft": True, "pad": art.preparation.get("pad", False)},
     )
     return redirect("simulation", pk=variant.pk)
+
+
+@require_POST
+@private_artwork
+@permission_required("studio.add_artwork", raise_exception=True)
+def new_version(request, pk):
+    art = get_object_or_404(Artwork, pk=pk, state=Artwork.State.READY)
+    fields = {name: getattr(art, name) for name in CalculationForm.Meta.fields}
+    preparation = art.preparation.copy()
+    profile = art.route.get("settings", {})
+    if (art.rectangle and art.target and profile.get("rectangle_mm") == art.rectangle
+            and profile.get("max_chord_uses") == handcraft.MAX_CHORD_USES
+            and profile.get("max_nail_load") == handcraft.MAX_NAIL_LOAD
+            and profile.get("min_segment_mm", 0) >= handcraft.MIN_SEGMENT_MM
+            and art.route.get("winding_sides")
+            and art.count == handcraft.SEGMENTS and art.winding_anchor_count <= handcraft.MAX_NAILS):
+        from studio.nail_clearance import placement_report
+        if placement_report(art.route)["min_pitch_mm"] >= 16:
+            preparation.update(handcraft=True, automatic_layout=True, refine_saved_winding=True)
+    child = Artwork.objects.create(**fields, source=art.source, previous=art, preparation=preparation)
+    return redirect("simulation", pk=child.pk)
 
 
 @private_artwork

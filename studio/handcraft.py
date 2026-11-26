@@ -84,7 +84,7 @@ def improve_winding_order(route):
         ]
 
 
-def photo_layout(source, field):
+def photo_layout(source, field, seed=24):
     """Place rim nails and favour dark features inside the registered photo crop."""
     from io import BytesIO
     from math import floor
@@ -100,7 +100,7 @@ def photo_layout(source, field):
     size = (max(3, round(144*w/max(field))), max(3, round(144*h/max(field))))
     tones = np.asarray(ImageOps.fit(canvas.convert("L"), size), dtype=float) / 255
     dy, dx = np.gradient(tones)
-    rng = np.random.default_rng(24)
+    rng = np.random.default_rng(seed)
     weights = (1 - tones) * (.25 + rng.random(tones.shape)) + np.hypot(dx, dy)
     points = []
     for x in np.linspace(-w/2, w/2, floor(w/17) + 1):

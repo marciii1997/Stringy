@@ -1,0 +1,22 @@
+    <section id="faedeln" class="thread-guide">
+      <h2>{% if following != None %}Dein nächster Zug{% else %}Für heute geschafft{% endif %}</h2>
+      <p>{{ gift.step }} von {{ count }} geschafft</p>
+      {% if day == 1 and gift.step == 0 %}<p>Befestige den Faden an Nagel <strong>{{ current }}</strong>. Hier beginnt dein Bild.</p>{% endif %}
+      {% if following != None %}
+        <p class="anchor-pair" aria-label="Von Nagel {{ current }} zu Nagel {{ following }}">{{ current }} → {{ following }}</p>
+        {% if current_direction and following_direction %}
+          <p>Von vorne aufs Brett gesehen:</p><ul class="wind-help"><li>An Nagel <strong>{{ current }}</strong> {{ current_direction }} wickeln.</li><li>Den Faden zu <strong>{{ following }}</strong> führen und dort {{ following_direction }} anlegen.</li></ul>
+        {% endif %}
+      {% else %}
+        <p>{% if day == 24 %}Verknote den Faden an Nagel {{ current }}. Dein Bild ist fertig!{% else %}Sichere den Faden an Nagel {{ current }} und lass ihn an der Spule. Beim nächsten Türchen geht es hier weiter.{% endif %}</p>
+      {% endif %}
+      <form data-step method="post" action="{% url 'thread_step' gift.pk day %}">
+        {% csrf_token %}{% if gift.tester_id %}<input type="hidden" name="preview" value="1">{% endif %}
+        <input type="hidden" name="step" value="{{ gift.step|stringformat:'d' }}">
+        {% if following != None %}<button name="action" value="next">Gefädelt · Weiter</button>{% endif %}
+        {% if gift.step %}<button name="action" value="back">Einen Schritt zurück</button>{% endif %}
+      </form>
+      {% if following == None %}
+        <form method="post" action="{% url 'complete' gift.pk day %}">{% csrf_token %}{% if gift.tester_id %}<input type="hidden" name="preview" value="1">{% endif %}<button>Türchen abschließen</button></form>
+      {% endif %}
+    </section>
