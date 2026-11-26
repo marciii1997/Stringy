@@ -2,21 +2,8 @@
 {% load static %}
 {% block content %}
   <div class="calendar-head home-head"><h1>Meine Adventskalender</h1><img class="calendar-art" src="{% static 'studio/garnhoernchen.webp' %}" alt=""></div>
-  {% if user.is_staff %}
-    <nav class="actions">
-      {% if perms.studio.view_artwork %}
-        <a href="{% url 'admin:studio_artwork_changelist' %}">Motive und Simulationen</a>
-      {% endif %}
-      {% if perms.studio.add_artwork %}
-        <a href="{% url 'admin:studio_artwork_add' %}">Neues Bild umwandeln</a>
-      {% endif %}
-      {% if perms.auth.add_user %}
-        <a href="{% url 'admin:auth_user_add' %}">Account anlegen</a>
-      {% endif %}
-      {% if perms.studio.add_calendar %}
-        <a href="{% url 'admin:studio_calendar_add' %}">Kalender verschenken</a>
-      {% endif %}
-    </nav>
+  {% if user.is_staff and perms.studio.add_artwork and perms.studio.view_artwork %}
+    <div class="actions"><a href="{% url 'upload' %}">Kalender aus einem Foto gestalten</a></div>
   {% endif %}
   <div class="cards">
     {% for gift in calendars %}
@@ -28,7 +15,7 @@
         </progress>
       </a>
     {% empty %}
-      <p>Diesem Konto wurde noch kein Kalender zugeteilt.</p>
+      <p>Sobald dir jemand einen Kalender schenkt, findest du ihn hier.</p>
     {% endfor %}
   </div>
 {% endblock %}

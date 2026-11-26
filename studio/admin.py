@@ -4,7 +4,7 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.html import format_html
 
-from .forms import CalculationForm
+from .forms import CalculationForm, validate_photo
 from .models import Artwork, Calendar
 
 admin.site.site_header = "Stringy · Atelier"
@@ -18,16 +18,7 @@ class ArtworkForm(CalculationForm):
     )
 
     def clean_photo(self):
-        photo = self.cleaned_data["photo"]
-        if (
-            photo.image.format not in {"JPEG", "PNG", "WEBP"}
-            or photo.size > 10 * 1024**2
-            or max(photo.image.size) > 8192
-        ):
-            raise forms.ValidationError(
-                "Bitte ein JPEG, PNG oder WebP innerhalb der angegebenen Grenzen wählen."
-            )
-        return photo
+        return validate_photo(self.cleaned_data["photo"])
 
 
 @admin.register(Artwork)

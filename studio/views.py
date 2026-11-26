@@ -1,4 +1,9 @@
 from io import BytesIO
+from pathlib import Path
+
+from django.contrib import messages
+from django.core.paginator import Paginator
+from django.db import transaction
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, permission_required
@@ -9,10 +14,10 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from PIL import Image
 
-from .forms import CalculationForm
+from .forms import CalculationForm, GiftForm, PhotoUploadForm
 from . import handcraft
 from .laser import LaserForm, laser_svg
-from .models import Artwork, Calendar
+from .models import Artwork, Calendar, advent_year
 
 
 @never_cache
@@ -43,6 +48,7 @@ def calendar(request, pk):
             "gift": gift,
             "days": range(1, 25),
             "unlocked": gift.unlocked(),
+            "next_day": gift.finished + 1,
         },
     )
 
@@ -130,6 +136,49 @@ def private_artwork(view):
     return never_cache(
         staff_member_required(permission_required("studio.view_artwork", raise_exception=True)(view))
     )
+
+
+@private_artwork
+def atelier(request):
+    motifs = Artwork.objects.only("title", "state", "count").order_by("-pk")
+    return render(request, "studio/atelier.html", {"page": Paginator(motifs, 18).get_page(request.GET.get("seite"))})
+
+
+@private_artwork
+@permission_required("studio.add_artwork", raise_exception=True)
+def upload(request):
+    form = PhotoUploadForm(request.POST if request.method == "POST" else None, request.FILES)
+    if request.method == "POST" and form.is_valid():
+        photo = form.cleaned_data["photo"]
+        photo.seek(0)
+        source = photo.read()
+        with Image.open(BytesIO(source)) as image:
+            w, h = image.size
+            if image.getexif().get(274) in (5, 6, 7, 8):
+                w, h = h, w
+        width, height = (max(100, round(490 * side / max(w, h)) + 10) for side in (w, h))
+        art = Artwork.objects.create(
+            title=Path(photo.name).stem[:100] or "Mein Foto", source=source,
+            canvas_format=Artwork.Format.CUSTOM, canvas_width=width, canvas_height=height,
+            thread=handcraft.THREAD_MM, shaft_mm=handcraft.SHAFT_MM, opacity=handcraft.OPACITY,
+            budget=handcraft.SEGMENTS, anchors=handcraft.MAX_NAILS, detail=4, passes=3,
+            quality_search=False, preparation={"handcraft": True, "automatic_layout": True},
+        )
+        return redirect("simulation", pk=art.pk)
+    return render(request, "studio/upload.html", {"form": form})
+
+
+@private_artwork
+@permission_required("studio.add_calendar", raise_exception=True)
+def give(request, pk):
+    art = get_object_or_404(Artwork.objects.only("title"), pk=pk, state=Artwork.State.READY, count__gte=24)
+    form = GiftForm(request.POST if request.method == "POST" else None)
+    year = advent_year()
+    if form.is_valid():
+        gift, _ = Calendar.objects.get_or_create(artwork=art, year=year, **form.cleaned_data)
+        messages.success(request, f"„{gift.title}“ ist im Konto von {gift.recipient} für den Advent {year} bereit.")
+        return redirect("atelier")
+    return render(request, "studio/give.html", {"art": art, "form": form, "year": year})
 
 
 def playback_layout(art, released=None):

@@ -7,7 +7,11 @@
     <div class="calendar-intro">
       <p class="kicker">Advent {{ gift.year|stringformat:"d" }}</p>
       <h1>{{ gift.title }}</h1>
-      <p>Vom 1. bis 24. Dezember öffnet sich täglich um Mitternacht ein Türchen (Berliner Zeit).</p>
+      {% if gift.finished == 24 %}<p>Dein Fadenbild ist fertig. In den Türchen kannst du deinen Weg noch einmal ansehen.</p>
+      {% elif next_day <= unlocked %}<p>Dein Faden wartet bei Türchen {{ next_day }}. Du kannst genau da weitermachen, wo du aufgehört hast.</p>
+        <a class="primary" href="{% url 'door' gift.pk next_day %}#faedeln">{% if gift.step %}Weiterfädeln{% else %}Türchen {{ next_day }} öffnen{% endif %}</a>
+      {% elif unlocked == 0 %}<p>Am 1. Dezember geht es los. Jeden Tag kommt ein Stück deines Fadenbilds dazu.</p>
+      {% else %}<p>Für heute bist du fertig. Am {{ next_day }}. Dezember öffnet sich dein nächstes Türchen.</p>{% endif %}
     </div>
     <img class="calendar-art" src="{% static 'studio/garnhoernchen.webp' %}" alt="" width="420" height="280">
   </section>

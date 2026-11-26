@@ -1,0 +1,12 @@
+{% extends "studio/base.html" %}
+{% block title %}Foto auswählen · Stringy{% endblock %}
+{% block content %}
+  <a class="back" href="{% url 'atelier' %}">← Mein Atelier</a>
+  <section class="flow">
+    <h1>Welches Foto möchtest du verschenken?</h1>
+    <p>Ein Gesicht oder ein klares Motiv mit hellem Hintergrund eignet sich gut. Stringy plant das Brett passend zum Bild, bis zu 50 cm groß, und teilt den Fadenweg auf 24 Tage auf.</p>
+    <form method="post" enctype="multipart/form-data" class="simple-form">{% csrf_token %}
+      {{ form.as_p }}<button>Fädelplan erstellen</button>
+    </form>
+  </section>
+{% endblock %}

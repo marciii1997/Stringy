@@ -5,15 +5,10 @@
   {% endif %}
 {% endblock %}
 {% block content %}
-  <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
+  <a href="{% url 'atelier' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
-  {% if perms.studio.add_artwork %}<p><a href="{% url 'motif' art.pk %}">Motiv bearbeiten und Varianten vergleichen</a></p>{% endif %}
+  {% if art.state == "failed" %}<h2>Das Foto ließ sich nicht umwandeln.</h2>
+    {% if perms.studio.add_artwork %}<p>Versuche ein gut beleuchtetes Foto mit einem klar erkennbaren Motiv.</p><a class="primary" href="{% url 'upload' %}">Anderes Foto auswählen</a><details><summary>Details und weitere Optionen</summary><p>{{ art.error }}</p><a href="{% url 'recalculate' art.pk %}">Berechnung anpassen</a></details>{% endif %}
+  {% else %}<h2>Dein Fädelplan entsteht</h2><p>Du kannst die Seite schließen. Die fertige Vorschau findest du später unter „Mein Atelier“.</p><a href="{% url 'atelier' %}">Zur Motivübersicht</a>{% endif %}
   {% if art.comparison %}<p><a href="{% url 'comparison' art.comparison %}">Zum Variantenvergleich</a></p>{% endif %}
-  <h2>{{ art.get_state_display }}</h2>
-  {% if art.state == "failed" %}
-    {% if perms.studio.add_artwork %}<p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p>{% endif %}
-    <p>{{ art.error }} In der Motivliste kannst du die Berechnung erneut starten.</p>
-  {% else %}
-    <p>Sobald der Fadenpfad berechnet ist, erscheint hier die Simulation.</p>
-  {% endif %}
 {% endblock %}

@@ -82,3 +82,36 @@ def improve_winding_order(route):
             {"from": a, "to": b, "length_mm": lengths[tuple(sorted((a, b)))]}
             for a, b in pairwise(best)
         ]
+
+
+def photo_layout(source, field):
+    """Place rim nails and favour dark features inside the registered photo crop."""
+    from io import BytesIO
+    from math import floor
+
+    import numpy as np
+    from PIL import Image, ImageOps
+
+    w, h = field
+    with Image.open(BytesIO(source)) as original:
+        image = ImageOps.exif_transpose(original).convert("RGBA")
+    canvas = Image.new("RGB", image.size, "white")
+    canvas.paste(image, mask=image.getchannel("A"))
+    size = (max(3, round(144*w/max(field))), max(3, round(144*h/max(field))))
+    tones = np.asarray(ImageOps.fit(canvas.convert("L"), size), dtype=float) / 255
+    dy, dx = np.gradient(tones)
+    rng = np.random.default_rng(24)
+    weights = (1 - tones) * (.25 + rng.random(tones.shape)) + np.hypot(dx, dy)
+    points = []
+    for x in np.linspace(-w/2, w/2, floor(w/17) + 1):
+        points.extend([(x, -h/2), (x, h/2)])
+    for y in np.linspace(-h/2, h/2, floor(h/17) + 1)[1:-1]:
+        points.extend([(-w/2, y), (w/2, y)])
+    for idx in np.argsort(weights.ravel())[::-1]:
+        y, x = np.unravel_index(idx, tones.shape)
+        if weights[y, x] < .06 or len(points) >= MAX_NAILS:
+            break
+        px, py = (x/(size[0]-1) - .5)*w, (y/(size[1]-1) - .5)*h
+        if all((px-a)**2 + (py-b)**2 >= 16.01**2 for a, b in points):
+            points.append((px, py))
+    return [[float(2*x/w), float(2*y/h)] for x, y in points]

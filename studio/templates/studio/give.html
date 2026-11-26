@@ -1,0 +1,14 @@
+{% extends "studio/base.html" %}
+{% block title %}Kalender verschenken · Stringy{% endblock %}
+{% block content %}
+  <a class="back" href="{% url 'simulation' art.pk %}">← Zur Vorschau</a>
+  <section class="flow"><h1>Kalender verschenken</h1>
+    <p>Ab dem 1. Dezember {{ year|stringformat:"d" }} kann die beschenkte Person die Türchen in ihrem Konto öffnen. Das Foto „{{ art.title }}“ bleibt geheim.</p>
+    <form class="simple-form" method="post">{% csrf_token %}{{ form.non_field_errors }}
+      <p>{{ form.recipient.as_field_group }}</p>
+      <details {% if form.title.errors %}open{% endif %}><summary>Kalendernamen ändern</summary><p>{{ form.title.as_field_group }}</p></details>
+      {% if perms.auth.add_user %}<p><a href="{% url 'admin:auth_user_add' %}" target="_blank" rel="noopener">Konto für eine neue Person anlegen</a> · Danach diese Seite neu laden.</p>{% endif %}
+      <button>Kalender im Konto bereitstellen</button>
+    </form>
+  </section>
+{% endblock %}

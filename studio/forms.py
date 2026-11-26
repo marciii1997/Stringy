@@ -2,6 +2,7 @@ import math
 from typing import ClassVar
 
 from django import forms
+from django.contrib.auth import get_user_model
 
 from .models import Artwork
 
@@ -121,3 +122,33 @@ class CalculationForm(forms.ModelForm):
             "opacity": "1 entspricht deckendem Schwarz. Kleinere Werte simulieren durchscheinenden Faden.",
             "thread": "Durchmesser des verwendeten Fadens in Millimetern.",
         }
+
+
+class PhotoUploadForm(forms.Form):
+    photo = forms.ImageField(
+        label="Dein Foto",
+        widget=forms.ClearableFileInput(attrs={"accept": "image/jpeg,image/png,image/webp"}),
+        help_text="JPG, PNG oder WebP · bis 10 MB",
+    )
+
+    def clean_photo(self):
+        return validate_photo(self.cleaned_data["photo"])
+
+
+def validate_photo(photo):
+    if photo.image.format not in {"JPEG", "PNG", "WEBP"} or photo.size > 10 * 1024**2 or max(photo.image.size) > 8192:
+        raise forms.ValidationError("Wähle ein JPG-, PNG- oder WebP-Bild bis 10 MB und 8192 Pixel je Seite.")
+    return photo
+
+
+class GiftForm(forms.Form):
+    recipient = forms.ModelChoiceField(
+        label="Für wen ist der Kalender?",
+        queryset=get_user_model().objects.filter(is_active=True).order_by("username"),
+        empty_label="Person auswählen",
+    )
+    title = forms.CharField(label="Name auf dem Kalender", max_length=100, required=False,
+                            initial="Ein Faden im Advent", help_text="Der Name ist für die beschenkte Person sichtbar.")
+
+    def clean_title(self):
+        return self.cleaned_data["title"] or self.fields["title"].initial

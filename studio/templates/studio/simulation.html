@@ -1,7 +1,50 @@
 {% extends "studio/base.html" %}
 {% block content %}
-  <a href="{% url 'admin:studio_artwork_changelist' %}">← Motive</a>
+  <a href="{% url 'atelier' %}">← Motive</a>
   <h1>{{ art.title }}</h1>
+  <div class="gift-preview">
+    <img src="{% url 'asset' art.pk 'preview' %}" alt="Vorschau des fertigen Fadenbilds">
+    <section><h2>Dein Fadenbild</h2>
+      <p>{{ art.winding_anchor_count }} Nägel · {{ art.count }} Fädelzüge{% if art.rectangle %}<br>Brett {{ art.canvas_width|floatformat:"-2" }} × {{ art.canvas_height|floatformat:"-2" }} mm{% endif %}</p>
+      {% if art.count >= 24 and perms.studio.add_calendar %}<a class="primary" href="{% url 'give' art.pk %}">Kalender verschenken</a>{% elif art.count < 24 %}<p>Für 24 Türchen braucht das Bild mehr Kontrast. Probiere ein anderes Foto.</p>{% endif %}
+      <form method="post" action="{% url 'laser' art.pk %}">{% csrf_token %}
+        <input type="hidden" name="mode" value="mark"><input type="hidden" name="feature_mm" value="1"><input type="hidden" name="margin_mm" value="5"><input type="hidden" name="labels" value="all"><input type="hidden" name="outline" value="on">
+        <button class="secondary">Nagelplan herunterladen (SVG)</button>
+      </form>
+    </section>
+  </div>
+  <details class="day-extra"><summary>Fadenverlauf und Bilddetails ansehen</summary>
+  <div class="spread">
+    <div>
+      <h2>Fadenverlauf</h2>
+      {% include "studio/player.html" %}
+    </div>
+    <div>
+      <h2>Berechnete Vorschau</h2>
+      <img class="art{% if art.rectangle %} rectangular{% endif %}"
+           src="{% url 'asset' art.pk 'preview' %}"
+           alt="Vollständige Fadensimulation">
+      <div class="motif-distances">
+        <figure><img width="112" src="{% url 'asset' art.pk 'preview' %}" alt="Fadenbild im Kleinformat">
+          <figcaption>Aus der Ferne</figcaption></figure>
+        <details><summary>Detailansicht (2×)</summary><div class="motif-zoom" tabindex="0" aria-label="Detailbild zum Scrollen">
+          <img width="1024" src="{% url 'asset' art.pk 'preview' %}" alt="Vergrößerte Fadenstruktur">
+        </div></details>
+      </div>
+      <details>
+        <summary>Graustufenvorlage ansehen</summary>
+        <img class="art{% if art.rectangle %} rectangular{% endif %}"
+             src="{% url 'asset' art.pk 'target' %}"
+             alt="Zugeschnittene Graustufenvorlage">
+      </details>
+      <p>
+        <a href="{% url 'asset' art.pk 'route' %}">Fadenpfad herunterladen</a>
+      </p>
+      <p><a href="{% url 'laser' art.pk %}">Laserdatei anpassen</a></p>
+    </div>
+  </div>
+  </details>
+  <details class="day-extra"><summary>Motiv bearbeiten und Berechnung ansehen</summary>
   {% if perms.studio.add_artwork %}
   {% if not art.preparation.handcraft %}
   <form method="post" action="{% url 'handcraft' art.pk %}">
@@ -36,38 +79,5 @@
   {% endif %}
   {% if perms.studio.add_artwork %}<details><summary>Manuelle Berechnung</summary><p><a href="{% url 'recalculate' art.pk %}">Parameter ändern und neu berechnen</a></p></details>{% endif %}
   {% if art.previous_id %}<p><a href="{% url 'simulation' art.previous_id %}">Vorherige Berechnung #{{ art.previous_id }} ansehen</a></p>{% endif %}
-  <div class="spread">
-    <div>
-      <h2>Fadenverlauf</h2>
-      {% include "studio/player.html" %}
-    </div>
-    <div>
-      <h2>Berechnete Vorschau</h2>
-      <img class="art{% if art.rectangle %} rectangular{% endif %}"
-           src="{% url 'asset' art.pk 'preview' %}"
-           alt="Vollständige Fadensimulation">
-      <div class="motif-distances">
-        <figure><img width="112" src="{% url 'asset' art.pk 'preview' %}" alt="Fadenbild im Kleinformat">
-          <figcaption>Aus der Ferne</figcaption></figure>
-        <details><summary>Detailansicht (2×)</summary><div class="motif-zoom" tabindex="0" aria-label="Detailbild zum Scrollen">
-          <img width="1024" src="{% url 'asset' art.pk 'preview' %}" alt="Vergrößerte Fadenstruktur">
-        </div></details>
-      </div>
-      <details>
-        <summary>Graustufenvorlage ansehen</summary>
-        <img class="art{% if art.rectangle %} rectangular{% endif %}"
-             src="{% url 'asset' art.pk 'target' %}"
-             alt="Zugeschnittene Graustufenvorlage">
-      </details>
-      <p>
-        <a href="{% url 'asset' art.pk 'route' %}">Fadenpfad herunterladen</a>
-      </p>
-      <p><a href="{% url 'laser' art.pk %}">Canvas für den Laser vorbereiten</a></p>
-      {% if art.count >= 24 %}
-        <a href="{% url 'admin:studio_calendar_add' %}?artwork={{ art.pk }}">Kalender mit diesem Motiv anlegen</a>
-      {% else %}
-        <p>Für 24 Türchen werden mindestens 24 Verbindungen benötigt. Bitte wähle ein kontrastreicheres Motiv.</p>
-      {% endif %}
-    </div>
-  </div>
+  </details>
 {% endblock %}

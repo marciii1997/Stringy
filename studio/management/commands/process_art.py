@@ -12,7 +12,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from studio.auto_nails import compact_route, keep_used_nails, suggest_positions
-from studio.handcraft import improve_winding_order, optimizer_flags
+from studio.handcraft import improve_winding_order, optimizer_flags, photo_layout
 from studio.models import Artwork
 from studio.motif import DEFAULTS, analysis_for, guide_for
 from studio.quality import view_quality
@@ -43,6 +43,9 @@ def process_one():
             folder = Path(temp)
             source = folder / "bild"
             source.write_bytes(art.source)
+            if art.preparation.get("automatic_layout") and not art.nail_positions:
+                art.nail_positions = photo_layout(art.source, art.field_size)
+                art.anchors = len(art.nail_positions)
             guided = (
                 any(art.preparation.get(key) for key in DEFAULTS)
                 or art.preparation.get("style", "natural") != "natural"

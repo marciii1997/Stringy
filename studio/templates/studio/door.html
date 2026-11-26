@@ -5,20 +5,21 @@
   <h1>Türchen {{ day }}</h1>
   {% if active %}
     <section id="faedeln" class="thread-guide">
-      <h2>Fädelmodus</h2>
-      <p>{{ gift.step }} von {{ count }} Verbindungen gefädelt</p>
+      <h2>{% if following != None %}Dein nächster Zug{% else %}Für heute geschafft{% endif %}</h2>
+      <p>{{ gift.step }} von {{ count }} geschafft</p>
+      {% if day == 1 and gift.step == 0 %}<p>Befestige den Faden an Nagel <strong>{{ current }}</strong>. Hier beginnt dein Bild.</p>{% endif %}
       {% if following != None %}
-        <p class="anchor-pair" aria-label="Von Anker {{ current }} zu Anker {{ following }}">{{ current }} → {{ following }}</p>
+        <p class="anchor-pair" aria-label="Von Nagel {{ current }} zu Nagel {{ following }}">{{ current }} → {{ following }}</p>
         {% if current_direction and following_direction %}
-          <p>Schaue von vorne auf das Brett. Den Faden an {{ current }} {{ current_direction }} herumführen und an {{ following }} für eine Wicklung {{ following_direction }} anlegen.</p>
+          <p>Von vorne aufs Brett gesehen:</p><ul class="wind-help"><li>An Nagel <strong>{{ current }}</strong> {{ current_direction }} wickeln.</li><li>Den Faden zu <strong>{{ following }}</strong> führen und dort {{ following_direction }} anlegen.</li></ul>
         {% endif %}
       {% else %}
-        <p>Du hast Anker {{ current }} erreicht. Alle Verbindungen dieses Türchens sind gefädelt.</p>
+        <p>{% if day == 24 %}Verknote den Faden an Nagel {{ current }}. Dein Bild ist fertig!{% else %}Sichere den Faden an Nagel {{ current }} und lass ihn an der Spule. Beim nächsten Türchen geht es hier weiter.{% endif %}</p>
       {% endif %}
       <form method="post" action="{% url 'thread_step' gift.pk day %}">
         {% csrf_token %}
         <input type="hidden" name="step" value="{{ gift.step|stringformat:'d' }}">
-        {% if following != None %}<button name="action" value="next">Verbindung gefädelt</button>{% endif %}
+        {% if following != None %}<button name="action" value="next">Gefädelt · Weiter</button>{% endif %}
         {% if gift.step %}<button name="action" value="back">Einen Schritt zurück</button>{% endif %}
       </form>
       {% if following == None %}
@@ -26,11 +27,14 @@
       {% endif %}
     </section>
   {% endif %}
-  <div class="spread">
-    {% include "studio/player.html" %}
+  {% if not active %}
+    {% if day <= gift.finished %}<p>Dieses Türchen hast du schon gefädelt.</p>{% else %}<p>Schließe zuerst Türchen {{ gift.finished|add:"1" }} ab.</p>{% endif %}
+  {% endif %}
+  <details class="day-extra"><summary>Fadenverlauf ansehen</summary>{% include "studio/player.html" %}</details>
+  <details class="day-extra"><summary>Alle Zahlen für heute</summary>
     <section>
-      <h2>Deine Zahlenfolge</h2>
-      <p>Beginne an Anker <strong>{{ sequence.0 }}</strong>. Folge den Zahlen von links nach rechts und lege den Faden jeweils um den nächsten Anker.</p>
+
+      <p>Beginne an Nagel <strong>{{ sequence.0 }}</strong>. Folge den Zahlen von links nach rechts und lege den Faden jeweils um den nächsten Nagel.</p>
       <p>{{ count }} Verbindungen</p>
       <ol class="sequence">
         {% if day_directions %}
@@ -50,11 +54,8 @@
             <button>Als fertig markieren</button>
           </form>
         {% endif %}
-      {% elif gift.finished >= day %}
-        <p>Dieses Türchen ist fertig.</p>
-      {% else %}
-        <p>Markiere zuerst die vorherigen Türchen als fertig.</p>
+
       {% endif %}
     </section>
-  </div>
+  </details>
 {% endblock %}

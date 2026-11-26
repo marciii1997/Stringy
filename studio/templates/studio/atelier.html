@@ -1,0 +1,14 @@
+{% extends "studio/base.html" %}
+{% block title %}Mein Atelier · Stringy{% endblock %}
+{% block content %}
+  <div class="page-title"><h1>Mein Atelier</h1>{% if perms.studio.add_artwork %}<a class="primary" href="{% url 'upload' %}">Foto auswählen</a>{% endif %}</div>
+  {% if messages %}{% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}{% endif %}
+  {% if page.object_list %}
+    <h2>Motive</h2>
+    <div class="cards">{% for art in page %}<a class="card motif-card" href="{% url 'simulation' art.pk %}">
+      {% if art.state == "ready" %}<img src="{% url 'asset' art.pk 'preview' %}" loading="lazy" alt="">{% endif %}
+      <h3>{{ art.title }}</h3><span>{% if art.state == "ready" %}Vorschau ansehen →{% elif art.state == "failed" %}Foto prüfen{% else %}Fädelplan in Arbeit{% endif %}</span>
+    </a>{% endfor %}</div>
+    {% if page.has_other_pages %}<nav class="pagination" aria-label="Motivseiten">{% if page.has_previous %}<a href="?seite={{ page.previous_page_number }}">← Zurück</a>{% endif %} Seite {{ page.number }} von {{ page.paginator.num_pages }} {% if page.has_next %}<a href="?seite={{ page.next_page_number }}">Weiter →</a>{% endif %}</nav>{% endif %}
+  {% else %}<p>Hier erscheinen deine Fadenbilder, sobald du ein Foto hinzufügst.</p>{% endif %}
+{% endblock %}

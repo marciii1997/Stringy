@@ -240,3 +240,39 @@ class QualityTests(TestCase):
         self.assertEqual(art.preview, good)
         self.assertEqual([r["raster"] for r in art.route["quality_trials"]], [512, 1024])
         self.assertGreater(art.route["view_quality"]["ssim"], art.route["previous_quality"]["ssim"])
+
+
+class GuidedFlowTests(TestCase):
+    def setUp(self):
+        self.staff = get_user_model().objects.create_superuser("atelier-test")
+        self.person = get_user_model().objects.create_user("gast-test")
+        self.client.force_login(self.staff)
+
+    def test_photo_only_upload_and_gift(self):
+        data = BytesIO()
+        Image.new("RGB", (200, 300), "gray").save(data, "PNG")
+        response = self.client.post(reverse("upload"), {
+            "photo": SimpleUploadedFile("Garten.png", data.getvalue(), content_type="image/png")
+        })
+        art = Artwork.objects.get()
+        self.assertRedirects(response, reverse("simulation", args=[art.pk]))
+        self.assertEqual(art.title, "Garten")
+        self.assertEqual(art.canvas_height, 500)
+        self.assertEqual(art.budget, 3000)
+        url = reverse("give", args=[art.pk])
+        self.assertEqual(self.client.post(url, {"recipient": self.person.pk}).status_code, 404)
+        art.state, art.count = Artwork.State.READY, 3000
+        art.save()
+        for _ in range(2):
+            self.assertRedirects(self.client.post(url, {"recipient": self.person.pk}), reverse("atelier"))
+        gift = Calendar.objects.get()
+        self.assertEqual(gift.title, "Ein Faden im Advent")
+        self.assertEqual(gift.recipient, self.person)
+        self.client.force_login(self.person)
+        self.assertEqual(self.client.get(reverse("atelier")).status_code, 302)
+        self.assertNotContains(self.client.get(reverse("home")), "Garten")
+
+    def test_empty_upload_shows_field_error(self):
+        response = self.client.post(reverse("upload"), {})
+        self.assertIn("photo", response.context["form"].errors)
+        self.assertFalse(Artwork.objects.exists())
