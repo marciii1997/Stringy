@@ -128,6 +128,7 @@ def automatic(art, source, folder, renew, save):
             trial = dict(stage=stage, **metrics)
             if best is None or (
                 metrics["score"] > best["physical_quality"]["score"]
+                and metrics["white_ink"] <= best["physical_quality"]["white_ink"] + .00025
                 and candidate["winding_clearance"]["uncertified_steps"]
                 <= best["winding_clearance"]["uncertified_steps"]
             ):

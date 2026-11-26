@@ -262,7 +262,8 @@ def refine_handcraft(art, source, folder, winner, reference, priority, deadline,
             simulation = physical_image(candidate)
             metrics = assess(reference, simulation)
             score = metrics["score"] + metrics["local_structure"]
-            if metrics["local_structure"] < baseline_metrics["local_structure"]:
+            if (metrics["local_structure"] < baseline_metrics["local_structure"]
+                    or metrics["white_ink"] > baseline_metrics["white_ink"] + .00025):
                 continue
             if candidate["winding_clearance"]["uncertified_steps"] > winner["route"]["winding_clearance"]["uncertified_steps"]:
                 continue

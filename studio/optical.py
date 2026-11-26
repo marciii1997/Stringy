@@ -68,7 +68,7 @@ class OpticalRefinement:
                     area = len(windows) * reference[box].size
                     gradient[box] += local_weight*reference.size/area*derivative(reference[box], simulated[box])
             white = reference >= .94
-            gradient[white] += .6/max(.01, white.mean())
+            gradient[white] += 1.25/max(.01, white.mean())
         sensitivity = (smooth(gradient) * view).ravel()
         gain = np.full(self.legal.shape, -np.inf)
         gain[self.a, self.b] = gain[self.b, self.a] = -sensitivity[self.indices].mean(axis=1) * self.length
