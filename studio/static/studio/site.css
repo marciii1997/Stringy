@@ -190,3 +190,17 @@ summary { cursor:pointer; margin:12px 0; font-weight:600; }
 @media(max-width:540px) { .calendar-intro>.primary { grid-column:1/-1; } }
 
 .simple-form .instant-choice input { width:auto; }
+
+/* Keep the repeated winding action within thumb reach as the instructions change. */
+.step-advance {
+  position:fixed; z-index:3; inset:auto 0 0;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top:1px solid var(--line); background:var(--surface); text-align:center;
+}
+.step-advance button {
+  width:min(100%, 420px); min-height:56px; font-size:1.25rem;
+  touch-action:manipulation;
+}
+.step-advance button span { margin-inline-start:.5em; }
+main:has(.step-advance) { padding-bottom:calc(96px + env(safe-area-inset-bottom, 0px)); }
+html:has(.step-advance) { scroll-padding-bottom:calc(88px + env(safe-area-inset-bottom, 0px)); }

@@ -13,7 +13,7 @@
       <form data-step method="post" action="{% url 'thread_step' gift.pk day %}">
         {% csrf_token %}{% if gift.tester_id %}<input type="hidden" name="preview" value="1">{% endif %}
         <input type="hidden" name="step" value="{{ gift.step|stringformat:'d' }}">
-        {% if following != None %}<button name="action" value="next">Gefädelt · Weiter</button>{% endif %}
+        {% if following != None %}<div class="step-advance"><button name="action" value="next">Weiter <span aria-hidden="true">→</span></button></div>{% endif %}
         {% if gift.step %}<button name="action" value="back">Einen Schritt zurück</button>{% endif %}
       </form>
       {% if following == None %}
