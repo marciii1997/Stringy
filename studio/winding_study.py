@@ -19,12 +19,15 @@ CAT_REGIONS = (
 PROFILES = ((1.0, None), (0.8, 0.75), (1.2, 1.0))
 
 
-def registered_regions(route, target):
-    # This registration belongs to the exact benchmark crop, regardless of title.
-    if (
+def registered_cat_crop(target):
+    return (
         hashlib.sha256(target).hexdigest()
         == "d167e2c62a459c3b067ae127c23e64af0bcc6688ff167d775b95787c369a3544"
-    ):
+    )
+
+
+def registered_regions(route, target):
+    if registered_cat_crop(target):
         return CAT_REGIONS
     return route.get("detail_regions", ())
 

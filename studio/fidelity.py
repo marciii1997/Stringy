@@ -17,6 +17,7 @@ from studio.winding_study import (
     effort,
     measurements,
     rebuilt,
+    registered_cat_crop,
     registered_regions,
     reorder_visits,
 )
@@ -391,8 +392,12 @@ def finish_candidate(route, candidate, target, alive):
     return winner
 
 
-def optimize_fidelity(route, target, alive=lambda: True):
+def optimize_fidelity(route, target, alive=lambda: True, source=None):
     count = len(route["path"]) - 1
+    if count == MAX_FIDELITY_STEPS and registered_cat_crop(target):
+        from .eye_detail import refine_eyes
+
+        return refine_eyes(route, target, alive, source)
     extra = max(0, min(MAX_FIDELITY_STEPS - count, round(count * 0.30)))
     view = simulation(route)
     search_tone = target_array(target, view.shape)

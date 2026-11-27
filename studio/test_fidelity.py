@@ -38,3 +38,19 @@ class WindingFidelityTests(TestCase):
             load = Counter(after[1:]) + Counter(after[:-1])
             self.assertLessEqual(max(load.values()), route["settings"]["max_nail_load"])
             route["path"] = after
+
+    def test_pupil_and_lid_contrast_is_independent_of_uniform_brightness(self):
+        from .eye_detail import contrast, masks
+        weights = masks((512, 433))
+        flat = np.full((512, 433), 190, dtype=np.uint8)
+        np.testing.assert_allclose(contrast(flat, weights), [0, 0], atol=1e-6)
+        left_pupil = flat.copy()
+        left_pupil[weights[0] < 0] = 30
+        left, right = contrast(left_pupil, weights)
+        self.assertGreater(left, 0.4)
+        self.assertAlmostEqual(right, 0)
+
+    def test_eye_registration_rejects_an_unrelated_target(self):
+        from .eye_detail import refine_eyes
+        route = {}
+        self.assertIs(refine_eyes(route, b"other photo"), route)

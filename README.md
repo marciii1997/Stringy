@@ -443,3 +443,12 @@ Die Strukturmessung orientiert sich an [Wang et al. (2004)](https://doi.org/10.1
 und der [Referenzimplementierung in scikit-image](https://github.com/scikit-image/scikit-image/blob/v0.25.2/skimage/metrics/_structural_similarity.py).
 Ein Vergleichsbeispiel für die verbreitete Auswahl der jeweils stärksten
 Restbildlinie liefert [StringArtGenerator](https://github.com/halfmonty/StringArtGenerator/blob/master/main.go).
+
+Bei **Neue Version berechnen** auf der registrierten Katzenversion mit 3.900
+Zügen untersucht der Worker zusätzlich den Hell-Dunkel-Abstand zwischen
+Pupille und unterer Lidkante beider Augen. Die vier Messflächen sind auf dem
+Katzenfoto festgelegt. Der Worker vergleicht den mittigen Originalausschnitt
+mit der gespeicherten Vorlage, bevor er ihn für die Suche verwendet.
+Er tauscht Verbindungen bei gleicher Zugzahl und prüft die Simulation mit drei
+Fadenprofilen. Die neue Augenwertung wird nur für den zugehörigen Bildausschnitt
+angewandt. Bereits verschenkte Kalender behalten ihre ausgewählte Motivversion.

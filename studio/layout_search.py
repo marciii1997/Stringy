@@ -112,7 +112,7 @@ def automatic(art, source, folder, renew, save):
                 else:
                     from studio.fidelity import optimize_fidelity
 
-                    candidate = optimize_fidelity(best, target, active)
+                    candidate = optimize_fidelity(best, target, active, source)
                     trials.append({"stage": stage, "selected": candidate is not best})
                 if candidate["physical_quality"]["score"] >= best["physical_quality"]["score"]:
                     best = candidate
