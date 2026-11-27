@@ -452,3 +452,19 @@ mit der gespeicherten Vorlage, bevor er ihn für die Suche verwendet.
 Er tauscht Verbindungen bei gleicher Zugzahl und prüft die Simulation mit drei
 Fadenprofilen. Die neue Augenwertung wird nur für den zugehörigen Bildausschnitt
 angewandt. Bereits verschenkte Kalender behalten ihre ausgewählte Motivversion.
+
+### Anderes Garn auf dem vorhandenen Brett
+
+Für eine neue Garnstärke kopiert der folgende Befehl den Nagelplan eines fertigen
+rechteckigen Handfädelmotivs und berechnet eine eigene Motivversion. Das erste
+Argument ist die Motivnummer im Atelier. Der Befehl gibt den Link zum Ergebnis aus.
+
+```bash
+docker compose exec -T web python manage.py adapt_yarn 9 --mm 0.30
+```
+
+Der Optimierer behält Werkstück, Bildausschnitt, Deckkraft und Nagelnummern bei.
+Er berechnet den Fadenweg neu und prüft die Wickelseiten mit einem um 20 %
+dickeren Faden und 0,5 mm radialer Platzierungstoleranz. Die Simulation setzt
+3-mm-Köpfe voraus. Ein erneuter Aufruf für dieselbe Ausgangsversion und
+Garnstärke gibt den Link zum bereits berechneten Pfad aus.
